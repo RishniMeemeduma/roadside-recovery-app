@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% load static %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roadside Help - QuickAssist</title>
+    <link rel="stylesheet" href="{% static 'usermanagement/css/home.css' %}">
+</head>
+<body>
+    <header class="main-header">
+        <div class="container header-inner">
+            <div class="brand">QUICK<span>ASSIST</span> <span class="sub-brand">Northwest</span></div>
+            <nav class="nav">
+                <a href="#pricing">Pricing</a>
+                <a href="#contact">Contact</a>
+            </nav>
+            <div class="header-cta">
+                <a href="#signin" class="btn ghost">Sign in</a>
+                <a href="#register" class="btn solid">Register</a>
+            </div>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="container hero-inner">
+                <h1>Roadside Help<br><span>When You Need It.</span></h1>
+                <p>Fast, reliable roadside assistance at your fingertips.<br>No memberships required. Only pay for what you use, when you use it.</p>
+                <a href="#contact" class="btn hero-btn">Contact Us</a>
+            </div>
+        </section>
+
+        <section class="features" id="pricing">
+            <div class="container">
+                <h2>Everything You Need To Get Back On The Road</h2>
+                <p>Premium recovery services without the premium membership price tag.</p>
+                <div class="cards">
+                    {% for card in cards %}
+                    <article class="card">
+                        <div class="card-image"></div>
+                        <h3>{{ card.title }}</h3>
+                        <strong>{{ card.price }}</strong>
+                        <p>{{ card.text }}</p>
+                    </article>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+
+        <footer class="site-footer" id="contact">
+            <div class="container footer-grid">
+                <div class="brand-footer">QuickAssist</div>
+                <div>
+                    <h3>Use cases</h3>
+                    <ul>
+                        <li>UI design</li><li>UX design</li><li>Wireframing</li><li>Diagramming</li><li>Brainstorming</li><li>Team collaboration</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>Explore</h3>
+                    <ul>
+                        <li>Design</li><li>Prototyping</li><li>Development features</li><li>Design systems</li><li>Collaboration features</li>
+                    </ul>
+                </div>
+                <div>
+                    <h3>Resources</h3>
+                    <ul>
+                        <li>Blog</li><li>Best practices</li><li>Colors</li><li>Support</li><li>Developers</li>
+                    </ul>
+                </div>
+            </div>
+        </footer>
+    </main>
+</body>
+</html>
