@@ -1,35 +1,112 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    {% load static %}
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register | QuickAssist</title>
-    <link rel="stylesheet" href="{% static 'usermanagement/css/home.css' %}">
-</head>
-<body>
-    <header class="main-header">
-        <div class="container header-inner">
-            <div class="brand">QUICK<span>ASSIST</span> <span class="sub-brand">Northwest</span></div>
-            <div class="header-cta">
-                <a href="{% url 'login' %}" class="btn ghost">Sign in</a>
-                <a href="{% url 'register' %}" class="btn solid">Register</a>
-            </div>
-        </div>
-    </header>
+{% extends 'base.html' %}
 
-    <main class="auth-page">
-        <div class="container">
-            <div class="auth-card">
-                <h2>Create your account</h2>
-                <form method="POST" novalidate>
-                    {% csrf_token %}
-                    {{ form.as_p }}
-                    <button type="submit" class="btn solid">Register</button>
-                </form>
-                <p class="auth-bottom">Already have an account? <a href="{% url 'login' %}">Login</a></p>
+{% block title %}Sign Up - Roadside Recovery{% endblock %}
+
+{% block sidebar %}{% endblock %}
+
+{% block extra_css %}
+.main-wrapper { justify-content: center; }
+.content {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+    }
+    .signup-box {
+        background: #fff;
+        padding: 40px;
+        border-radius: 12px;
+        box-shadow: 0 2px 16px rgba(0,0,0,0.1);
+        width: 100%;
+        max-width: 480px;
+    }
+{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:center; align-items:center; min-height:80vh;">
+<div class="signup-box">
+    <h1 style="text-align:center; margin-bottom:8px; color:#1a1a2e;">Create Account</h1>
+    <p style="text-align:center; color:#666; margin-bottom:30px; font-size:14px;">Join Roadside Recovery today</p>
+
+    {% if messages %}
+    <div style="background:#fee; border:1px solid #fcc; border-radius:8px; padding:12px; margin-bottom:20px; color:#c33; font-size:13px;">
+        <ul style="list-style:none;">
+            {% for message in messages %}
+            <li>{{ message }}</li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endif %}
+
+    <form method="POST" action="{% url 'signup' %}">
+        {% csrf_token %}
+
+        <div style="display:flex; gap:16px; margin-bottom:20px;">
+            <div style="flex:1;">
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">First Name</label>
+                <input type="text" name="first_name" required value="{{ form_data.first_name|default:'' }}"
+                       style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+            </div>
+            <div style="flex:1;">
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Last Name</label>
+                <input type="text" name="last_name" required value="{{ form_data.last_name|default:'' }}"
+                       style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
             </div>
         </div>
-    </main>
-</body>
-</html>
+
+        <div style="margin-bottom:20px;">
+            <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Username</label>
+            <input type="text" name="username" required value="{{ form_data.username|default:'' }}"
+                   style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+        </div>
+
+        <div style="margin-bottom:20px;">
+            <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Email</label>
+            <input type="email" name="email" required value="{{ form_data.email|default:'' }}"
+                   style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+        </div>
+
+        <div style="margin-bottom:20px;">
+            <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Phone Number</label>
+            <input type="tel" name="phone" required value="{{ form_data.phone|default:'' }}"
+                   style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+        </div>
+
+        <div style="margin-bottom:20px;">
+            <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Address</label>
+            <input type="text" name="address" value="{{ form_data.address|default:'' }}"
+                style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;"
+                placeholder="Optional">
+        </div>
+
+
+        <div style="margin-bottom:20px;">
+            <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Register As</label>
+            <select name="role" required style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+                <option value="MEMBER">Member</option>
+                <option value="DRIVER">Driver</option>
+            </select>
+        </div>
+
+        <div style="margin-bottom:20px;">
+            <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Password</label>
+            <input type="password" name="password" required
+                   style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+        </div>
+
+        <div style="margin-bottom:20px;">
+            <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Confirm Password</label>
+            <input type="password" name="confirm_password" required
+                   style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+        </div>
+
+        <button type="submit" style="width:100%; padding:14px; background:#4a90d9; color:#fff; border:none; border-radius:8px; font-size:16px; font-weight:600; cursor:pointer;">
+            Sign Up
+        </button>
+    </form>
+
+    <p style="text-align:center; margin-top:20px; font-size:14px; color:#666;">
+        Already have an account? <a href="{% url 'login' %}" style="color:#4a90d9; font-weight:600; text-decoration:none;">Log in</a>
+    </p>
+</div>
+</div>  
+{% endblock %}

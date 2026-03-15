@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    {% load static %}
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Roadside Help - QuickAssist</title>
+    <link rel="stylesheet" href="{% static 'usermanagement/css/home.css' %}">
+</head>
+<body>
+    <header class="main-header">
+        <div class="container header-inner">
+            <div class="brand">QUICK<span>ASSIST</span> <span class="sub-brand">Northwest</span></div>
+            <nav style="display:flex; align-items:center; gap:20px;">
+        {% if user.is_authenticated %}
+            <a href="#" style="color:#555; text-decoration:none; font-size:14px;">Pricing</a>
+            <a href="#" style="color:#555; text-decoration:none; font-size:14px;">Contact</a>
+            <span style="font-size:20px; cursor:pointer;">🔔</span>
+            <div class="dropdown">
+                <button class="btn btn-primary rounded-circle" data-bs-toggle="dropdown">
+                    {{ user.username|first|upper }}
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><h6 class="dropdown-header">{{ user.role }}</h6></li>
+                    <li><a class="dropdown-item" href="#">Profile</a></li>
+                    <li><a class="dropdown-item" href="#">Settings</a></li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li><a class="dropdown-item" href="{% url 'logout' %}">Logout</a></li>
+                </ul>
+            </div>
+
+        {% else %}
+            <a href="{% url 'login' %}" style="color:#555; text-decoration:none;">Login</a>
+            <a href="{% url 'signup' %}" style="color:#555; text-decoration:none;">Sign Up</a>
+        {% endif %}
+    </nav>
+        </div>
+    </header>
+
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+</body>
+</html>

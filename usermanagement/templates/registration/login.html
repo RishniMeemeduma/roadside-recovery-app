@@ -1,35 +1,46 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    {% load static %}
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login | QuickAssist</title>
-    <link rel="stylesheet" href="{% static 'usermanagement/css/home.css' %}">
-</head>
-<body>
-    <header class="main-header">
-        <div class="container header-inner">
-            <div class="brand">QUICK<span>ASSIST</span> <span class="sub-brand">Northwest</span></div>
-            <div class="header-cta">
-                <a href="{% url 'login' %}" class="btn ghost">Sign in</a>
-                <a href="{% url 'register' %}" class="btn solid">Register</a>
-            </div>
-        </div>
-    </header>
+{% extends 'base.html' %}
 
-    <main class="auth-page">
-        <div class="container">
-            <div class="auth-card">
-                <h2>Login to your account</h2>
-                <form method="POST" novalidate>
-                    {% csrf_token %}
-                    {{ form.as_p }}
-                    <button type="submit" class="btn solid">Login</button>
-                </form>
-                <p class="auth-bottom">Don't have an account? <a href="{% url 'register' %}">Register</a></p>
-            </div>
+{% block sidebar %}{% endblock %}
+
+{% block content %}
+<div style="display:flex; justify-content:center; align-items:center; min-height:80vh;">
+    <div style="background:#fff; padding:40px; border-radius:12px; box-shadow:0 2px 16px rgba(0,0,0,0.1); width:100%; max-width:420px;">
+        <h1 style="text-align:center; margin-bottom:8px; color:#1a1a2e;">Welcome Back</h1>
+        <p style="text-align:center; color:#666; margin-bottom:30px; font-size:14px;">Sign in to your account</p>
+
+        {% if messages %}
+        <div style="background:#fee; border:1px solid #fcc; border-radius:8px; padding:12px; margin-bottom:20px; color:#c33; font-size:13px;">
+            <ul style="list-style:none;">
+                {% for message in messages %}
+                <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
         </div>
-    </main>
-</body>
-</html>
+        {% endif %}
+
+        <form method="POST" action="{% url 'login' %}">
+            {% csrf_token %}
+
+            <div style="margin-bottom:20px;">
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Username</label>
+                <input type="text" name="username" required
+                       style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+            </div>
+
+            <div style="margin-bottom:20px;">
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Password</label>
+                <input type="password" name="password" required
+                       style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+            </div>
+
+            <button type="submit" style="width:100%; padding:14px; background:#4a90d9; color:#fff; border:none; border-radius:8px; font-size:16px; font-weight:600; cursor:pointer;">
+                Sign In
+            </button>
+        </form>
+
+        <p style="text-align:center; margin-top:20px; font-size:14px; color:#666;">
+            Don't have an account? <a href="{% url 'signup' %}" style="color:#4a90d9; font-weight:600; text-decoration:none;">Sign up</a>
+        </p>
+    </div>
+</div>
+{% endblock %}
