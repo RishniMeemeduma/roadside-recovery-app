@@ -83,8 +83,8 @@ WSGI_APPLICATION = 'roadsideassist.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'roadsideassist',
-        'USER': 'admin',
+        'NAME': 'roadside_recovery',
+        'USER': 'postgres',
         'PASSWORD': 'admin',
         'HOST': 'localhost',
         'PORT': '5432',

@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from usermanagement.models import Driver
 
 
 # Create your models here.
@@ -60,3 +61,43 @@ class RecoveryRequest(models.Model):
 
     def __str__(self):
         return f"Request #{self.id} - {self.status}"
+    
+class Assignment(models.Model):
+    class DriverResponse(models.TextChoices):
+        ACCEPTED = 'ACCEPTED', 'Accepted'
+        DECLINED = 'DECLINED', 'Declined'
+        TIMEOUT = 'TIMEOUT', 'Timeout'
+
+    request = models.ForeignKey(RecoveryRequest, on_delete=models.CASCADE, related_name='assignments')
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='assignments')
+    offer_sent_at = models.DateTimeField()
+    driver_response = models.CharField(max_length=10, choices=DriverResponse.choices)
+    driver_responded_at = models.DateTimeField(null=True, blank=True)
+    accepted_at = models.DateTimeField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+    cancellation_reason = models.TextField(null=True, blank=True)
+    expired_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return f"Assignment #{self.id} - Request #{self.request_id}"
+
+
+class JobHistory(models.Model):
+    request = models.OneToOneField(RecoveryRequest, on_delete=models.CASCADE, related_name='job_history')
+    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='job_histories')
+    assignment = models.OneToOneField(Assignment, on_delete=models.CASCADE, related_name='job_history')
+    start_time = models.DateTimeField()
+    end_time = models.DateTimeField()
+    completion_time_minutes = models.IntegerField()
+    member_rating = models.IntegerField(null=True, blank=True)
+    driver_notes = models.TextField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = 'Job histories'
+
+    def __str__(self):
+        return f"Job #{self.id} - Request #{self.request_id}"

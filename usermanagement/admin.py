@@ -9,7 +9,7 @@ class CustomUserAdmin(UserAdmin):
     fieldsets = UserAdmin.fieldsets + (
         ('Custom Fields', {'fields': ('uuid', 'role', 'active', 'deleted_at')}),
     )
-    readonly_fields = ('uuid')
+    readonly_fields = ['uuid']
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
