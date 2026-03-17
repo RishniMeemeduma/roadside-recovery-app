@@ -74,3 +74,20 @@ class DriverLocation(models.Model):
  
     def __str__(self):
         return f"Location of Driver {self.driver_id} ({self.latitude}, {self.longitude})"
+    
+@property
+def location_display(self):
+    loc = self.locations.filter(is_current=True).first()
+    if loc:
+        return f"{loc.latitude}, {loc.longitude}"
+    return None
+
+@property
+def uptime_display(self):
+    if self.status == 'AVAILABLE' or self.status == 'IN_PROGRESS':
+        from django.utils import timezone
+        delta = timezone.now() - self.updated_at
+        hours = int(delta.total_seconds() // 3600)
+        minutes = int((delta.total_seconds() % 3600) // 60)
+        return f"{hours}h {minutes}m"
+    return "0m"

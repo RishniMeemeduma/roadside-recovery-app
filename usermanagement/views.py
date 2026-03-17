@@ -91,11 +91,13 @@ def login_view(request):
 @login_required
 def dashboard(request):
     if request.user.role == 'ADMIN':
-        total_users = User.objects.count()
+        active_jobs = RecoveryRequest.objects.filter(
+            status__in=['PENDING', 'IN_PROGRESS', 'ASSIGNED']
+        ).count()
         online_drivers = Driver.objects.filter(status='AVAILABLE').count()
-        drivers = Driver.objects.select_related('user').all()
-        return render(request, 'usermanagement/admin_dashboard.html', {
-            'total_users': total_users,
+        drivers = Driver.objects.select_related('user', 'user__profile').all()
+        return render(request, 'usermanagement/admin-dashboard.html', {
+            'active_jobs': active_jobs,
             'online_drivers': online_drivers,
             'avg_response': 32,
             'drivers': drivers,
@@ -133,7 +135,7 @@ def admin_dashboard(request):
         "driver_statuses": Driver.Status.choices,
         "vehicle_types": Driver.VehicleType.choices,
     }
-    return render(request, "usermanagement/admin_dashboard.html", context)
+    return render(request, "usermanagement/admin-dashboard.html", context)
 
 
 @login_required(login_url="login")
@@ -195,7 +197,7 @@ def admin_create_service(request):
 def admin_delete_user(request, user_id):
     if request.user.role != User.Role.ADMIN:
         return redirect("home")
-    user = get_object_or_404(User, id=user_id)
+    user = get_object_or_404(User, uuid=user_id)
     if user == request.user:
         messages.error(request, "You cannot delete your own account.")
     else:
@@ -212,3 +214,38 @@ def admin_delete_service(request, service_id):
     service.delete()
     messages.success(request, f"Service '{service.name}' deleted.")
     return redirect("admin_dashboard")
+
+@login_required
+def admin_users(request):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+    users = User.objects.all()
+    drivers = Driver.objects.select_related('user').all()
+    return render(request, 'usermanagement/admin_users.html', {
+        'users': users,
+        'drivers': drivers,
+    })
+
+@login_required
+def admin_recovery_requests(request):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+    requests_list = RecoveryRequest.objects.select_related('member', 'service').all()
+    return render(request, 'usermanagement/admin_recovery_requests.html', {
+        'requests': requests_list,
+    })
+
+@login_required
+def admin_analytics(request):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+    return render(request, 'usermanagement/admin_analytics.html')
+
+@login_required
+def admin_services(request):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+    services = Service.objects.all()
+    return render(request, 'usermanagement/admin_services.html', {
+        'services': services,
+    })
