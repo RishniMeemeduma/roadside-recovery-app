@@ -1,0 +1,41 @@
+{% extends 'portal.html' %}
+{% block title %}Users Management{% endblock %}
+
+{% block content %}
+<h2 style="font-size:22px; font-weight:700; color:#1a1a2e; margin-bottom:20px;">Users Management</h2>
+<div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:24px;">
+    <table style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr style="text-align:left; color:#888; font-size:12px; text-transform:uppercase;">
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Username</th>
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Email</th>
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Role</th>
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Status</th>
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for u in users %}
+            <tr>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ u.username }}</td>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ u.email }}</td>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ u.role }}</td>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">
+                    {% if u.active %}
+                        <span style="background:#e8f5e9; color:#4CAF50; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">ACTIVE</span>
+                    {% else %}
+                        <span style="background:#f5f5f5; color:#888; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">INACTIVE</span>
+                    {% endif %}
+                </td>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">
+                    <a href="{% url 'admin_delete_user' u.uuid %}" style="color:#e53935; font-size:13px; text-decoration:none;"
+                       onclick="return confirm('Delete this user?')">Delete</a>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" style="padding:20px; text-align:center; color:#888;">No users found.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}

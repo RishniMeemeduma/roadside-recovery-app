@@ -1,0 +1,52 @@
+<!-- Toggle button (visible on mobile) -->
+{%if user.is_authenticated %}
+<button class="btn btn-primary d-md-none position-fixed" style="top:80px; left:10px; z-index:99;"
+        data-bs-toggle="offcanvas" data-bs-target="#sidebar">
+    ☰
+</button>
+
+<!-- Sidebar -->
+<nav id="sidebar" class="offcanvas-md offcanvas-start d-flex flex-column flex-shrink-0 p-3 text-white bg-primary"
+     style="width: 240px;">
+    <div class="offcanvas-header d-md-none">
+        <h5 class="offcanvas-title text-white">Menu</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="offcanvas"></button>
+    </div>
+    <div class="offcanvas-body d-md-block">
+        <ul class="nav nav-pills flex-column">
+
+           {% if user.role == 'ADMIN' %}
+                <li class="nav-item">
+                    <a href="{% url 'dashboard' %}" class="nav-link text-white {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">⚙️ Dashboard</a>
+                </li>
+                <li><a href="{% url 'admin_users' %}" class="nav-link text-white-50 {% if request.resolver_match.url_name == 'admin_users' %}active text-white{% endif %}">👤 Users</a></li>
+                <li><a href="{% url 'admin_recovery_requests' %}" class="nav-link text-white-50 {% if request.resolver_match.url_name == 'admin_recovery_requests' %}active text-white{% endif %}">🚗 Recovery Requests</a></li>
+                <li><a href="{% url 'admin_analytics' %}" class="nav-link text-white-50 {% if request.resolver_match.url_name == 'admin_analytics' %}active text-white{% endif %}">📊 Analytics</a></li>
+                <li><hr class="border-light my-2"></li>
+                <li class="text-uppercase text-white-50 small px-3 py-2">Management</li>
+                <li><a href="{% url 'admin_users' %}" class="nav-link text-white-50">📁 Users Requests</a></li>
+                <li><a href="{% url 'admin_users' %}" class="nav-link text-white-50">📁 Drivers Requests</a></li>
+                <li><a href="{% url 'admin_services' %}" class="nav-link text-white-50">📁 Services</a></li>
+
+
+            {% elif user.role == 'MEMBER' %}
+                <li class="nav-item">
+                    <a href="{% url 'home' %}" class="nav-link text-white active">⚙️ Dashboard</a>
+                </li>
+                <li><a href="#" class="nav-link text-white-50">🚗 Request Service</a></li>
+                <li><a href="#" class="nav-link text-white-50">📋 My Requests</a></li>
+                <li><a href="#" class="nav-link text-white-50">👤 Profile</a></li>
+
+            {% elif user.role == 'DRIVER' %}
+                <li class="nav-item">
+                    <a href="{% url 'home' %}" class="nav-link text-white active">⚙️ Dashboard</a>
+                </li>
+                <li><a href="#" class="nav-link text-white-50">📋 Available Jobs</a></li>
+                <li><a href="#" class="nav-link text-white-50">✅ My Assignments</a></li>
+                <li><a href="#" class="nav-link text-white-50">👤 Profile</a></li>
+            {% endif %}
+
+        </ul>
+    </div>
+</nav>
+{% endif %}

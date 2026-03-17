@@ -1,0 +1,42 @@
+{% extends 'portal.html' %}
+{% block title %}Recovery Requests{% endblock %}
+
+{% block content %}
+<h2 style="font-size:22px; font-weight:700; color:#1a1a2e; margin-bottom:20px;">Recovery Requests</h2>
+<div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:24px;">
+    <table style="width:100%; border-collapse:collapse;">
+        <thead>
+            <tr style="text-align:left; color:#888; font-size:12px; text-transform:uppercase;">
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">ID</th>
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Member</th>
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Service</th>
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Status</th>
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Priority</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for req in requests %}
+            <tr>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">#{{ req.id }}</td>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.member.username }}</td>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.service.name }}</td>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">
+                    {% if req.status == 'PENDING' %}
+                        <span style="background:#fff3e0; color:#FF9800; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">PENDING</span>
+                    {% elif req.status == 'IN_PROGRESS' %}
+                        <span style="background:#e3f2fd; color:#2196F3; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">IN PROGRESS</span>
+                    {% elif req.status == 'COMPLETED' %}
+                        <span style="background:#e8f5e9; color:#4CAF50; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">COMPLETED</span>
+                    {% else %}
+                        <span style="background:#f5f5f5; color:#888; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">{{ req.status }}</span>
+                    {% endif %}
+                </td>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.priority }}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="5" style="padding:20px; text-align:center; color:#888;">No recovery requests found.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endblock %}
