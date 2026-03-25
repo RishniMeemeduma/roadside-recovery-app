@@ -160,6 +160,7 @@ def dashboard(request):
         today_requests = RecoveryRequest.objects.filter(
             member=request.user,
             created_at__date=timezone.localdate(),
+            status__in=['PENDING', 'IN_PROGRESS', 'ASSIGNED']
         ).select_related('service').order_by('-created_at')
         return render(request, 'usermanagement/member_dashboard.html',
                       {
