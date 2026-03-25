@@ -1,6 +1,6 @@
 from django.urls import path
 from django.contrib import admin
-from usermanagement.views import admin_handle_request, admin_users, driver_requests, login_view, members, register_view, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services
+from usermanagement.views import admin_handle_request, admin_users, driver_requests, login_view, members, register_view, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services, submit_request, lookup_vehicle, cancel_request
 
 urlpatterns = [
     path('register/', register_view, name='register'),
@@ -21,6 +21,7 @@ urlpatterns = [
     path('dashboard/admin-users/', admin_users, name='admin_users'),
     path('dashboard/driver-requests/', driver_requests, name='driver_requests'),
     path('dashboard/handle-request/<uuid:request_id>/', admin_handle_request, name='admin_handle_request'),
-
-
+    path('submit-request/', submit_request, name='submit_request'),
+    path('cancel-request/<int:request_id>/', cancel_request, name='cancel_request'),
+    path('lookup-vehicle/', lookup_vehicle, name='lookup_vehicle'),
 ]

@@ -1,3 +1,7 @@
+import requests as http_requests
+from django.conf import settings
+from django.http import JsonResponse
+from django.views.decorators.http import require_POST
 from django.shortcuts import redirect, render
 from django.contrib.auth import login
 from .forms import RegistrationForm
@@ -152,7 +156,38 @@ def dashboard(request):
     elif request.user.role == 'DRIVER':
         return render(request, 'usermanagement/driver_dashboard.html')
     else:
-        return render(request, 'usermanagement/member_dashboard.html')
+        services = Service.objects.filter(active=True).order_by('id')
+        today_requests = RecoveryRequest.objects.filter(
+            member=request.user,
+            created_at__date=timezone.localdate(),
+        ).select_related('service').order_by('-created_at')
+        return render(request, 'usermanagement/member_dashboard.html',
+                      {
+                          'services': services,
+                          'today_requests': today_requests,
+                      })
+
+
+@login_required
+@require_POST
+def cancel_request(request, request_id):
+    if request.user.role != 'MEMBER':
+        return redirect('home')
+
+    recovery_request = get_object_or_404(
+        RecoveryRequest,
+        id=request_id,
+        member=request.user,
+    )
+
+    if recovery_request.status in {'COMPLETED', 'CANCELLED'}:
+        messages.error(request, 'This request can no longer be cancelled.')
+        return redirect('dashboard')
+
+    recovery_request.status = 'CANCELLED'
+    recovery_request.save(update_fields=['status', 'updated_at'])
+    messages.success(request, 'Recovery request cancelled successfully.')
+    return redirect('dashboard')
 
 def logout_view(request):
     logout(request)
@@ -277,7 +312,7 @@ def members(request):
         return redirect('home')
     members = User.objects.filter(role='MEMBER').select_related('profile').all()
     return render(request, 'usermanagement/admin_users.html', {
-        'members': members,
+        'users': members,
     })
 
 @login_required
@@ -385,3 +420,124 @@ def admin_handle_request(request, request_id):
             user_request.save()
             messages.success(request, f"User '{user_request.username}' rejected.")
     return redirect('admin_user_requests')
+
+@login_required
+@require_POST
+def lookup_vehicle(request):
+    reg = request.POST.get('registration', '').strip().upper().replace(' ', '')
+    if not reg:
+        return JsonResponse({'error': 'No registration provided.'}, status=400)
+
+    api_key = getattr(settings, 'DVLA_API_KEY', '')
+    if not api_key:
+        return JsonResponse({'error': 'Vehicle lookup not configured. Add DVLA_API_KEY to settings.'}, status=503)
+
+    try:
+        resp = http_requests.post(
+            'https://driver-vehicle-licensing.api.gov.uk/vehicle-enquiry/v1/vehicles',
+            headers={'x-api-key': api_key, 'Content-Type': 'application/json'},
+            json={'registrationNumber': reg},
+            timeout=8,
+        )
+        if resp.status_code == 200:
+            data = resp.json()
+            return JsonResponse({
+                'make': data.get('make', ''),
+                'colour': data.get('colour', ''),
+                'fuelType': data.get('fuelType', ''),
+                'yearOfManufacture': data.get('yearOfManufacture', ''),
+                'engineCapacity': data.get('engineCapacity', ''),
+                'registrationNumber': data.get('registrationNumber', reg),
+            })
+        elif resp.status_code == 404:
+            return JsonResponse({'error': 'Vehicle not found. Check the registration.'}, status=404)
+        else:
+            return JsonResponse({'error': 'DVLA lookup failed. Try again later.'}, status=502)
+    except http_requests.exceptions.Timeout:
+        return JsonResponse({'error': 'Lookup timed out. Try again.'}, status=504)
+    except Exception:
+        return JsonResponse({'error': 'Unexpected error during lookup.'}, status=500)
+
+
+@login_required
+def submit_request(request):
+    if request.method == 'POST':
+        service_id = request.POST.get('service_id')
+        vehicle_registration = request.POST.get('vehicle_registration', '').strip()
+        vehicle_details_manual = request.POST.get('vehicle_details', '').strip()
+        place = request.POST.get('place', '').strip()
+        details = request.POST.get('details', '').strip()
+        address = request.POST.get('address', '').strip()
+        latitude = request.POST.get('latitude', '0').strip() or '0'
+        longitude = request.POST.get('longitude', '0').strip() or '0'
+
+        services = Service.objects.filter(active=True).order_by('id')
+        form_data = {
+            'service_id': service_id,
+            'vehicle_registration': vehicle_registration,
+            'vehicle_details': vehicle_details_manual,
+            'place': place,
+            'details': details,
+            'address': address,
+            'latitude': latitude,
+            'longitude': longitude,
+        }
+
+        def render_form(error):
+            messages.error(request, error)
+            return render(request, 'usermanagement/member_dashboard.html', {
+                'services': services,
+                'form_data': form_data,
+            })
+
+        if not service_id:
+            return render_form('Please select a service type (tap one of the issue buttons).')
+
+        missing = []
+        if not vehicle_registration:
+            missing.append('Vehicle Registration')
+        if not vehicle_details_manual:
+            missing.append('Vehicle Make & Model')
+        if not details:
+            missing.append('More Details')
+        if not address:
+            missing.append('Address')
+        if missing:
+            return render_form(f"These fields are required: {', '.join(missing)}")
+
+        service = get_object_or_404(Service, id=service_id, active=True)
+
+        try:
+            latitude = f"{float(latitude):.6f}"
+            longitude = f"{float(longitude):.6f}"
+        except ValueError:
+            latitude = '0.000000'
+            longitude = '0.000000'
+
+        if place not in {'MOTORWAY', 'ROAD', 'NEAR HOUSE'}:
+            place = 'ROAD'
+
+        if vehicle_details_manual:
+            vehicle_details = f"{vehicle_registration.upper()} — {vehicle_details_manual}"
+        else:
+            vehicle_details = vehicle_registration.upper()
+
+        try:
+            RecoveryRequest.objects.create(
+                member=request.user,
+                service=service,
+                location_latitude=latitude,
+                location_longitude=longitude,
+                address=address,
+                issue_description=details,
+                vehicle_details=vehicle_details[:255],
+                status='PENDING',
+                priority='EMERGENCY' if place == 'MOTORWAY' else 'NORMAL',
+                place=place,
+            )
+            messages.success(request, 'Recovery request submitted successfully!')
+            return redirect('dashboard')
+        except Exception as e:
+            return render_form(f'Could not save your request: {e}')
+
+    return redirect('dashboard')

@@ -55,6 +55,9 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'roadsideassist.urls'
 AUTH_USER_MODEL = 'usermanagement.User'
+
+# DVLA Vehicle Enquiry API key — get one at https://developer-portal.driver-vehicle-licensing.api.gov.uk/
+DVLA_API_KEY = ''
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 LOGIN_REDIRECT_URL = '/'
 LOGOUT_REDIRECT_URL = '/'
