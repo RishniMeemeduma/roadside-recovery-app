@@ -4,16 +4,21 @@ from .forms import RegistrationForm
 from django.contrib.auth import authenticate, login, logout
 from django.shortcuts import render, redirect
 from django.contrib import messages
-from usermanagement.models import User, UserProfile, Driver
+from usermanagement.models import User, UserProfile, DriverStatus
 from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 
 from recovery.models import RecoveryRequest
 from services.models import Service
-from usermanagement.models import Driver, User, UserProfile
+from usermanagement.models import DriverStatus, User, UserProfile
+
+from recovery.models import RecoveryRequest
+from django.contrib import messages
+from django.shortcuts import get_object_or_404
 
 
 
@@ -41,17 +46,39 @@ def signup(request):
         phone = request.POST.get('phone')
         role = request.POST.get('role')
 
+        services = Service.objects.filter(active=True)
+        context = {'form_data': request.POST, 'services': services}
+
         if password != confirm_password:
             messages.error(request, 'Passwords do not match.')
-            return render(request, 'usermanagement/signup.html', {'form_data': request.POST})
+            return render(request, 'usermanagement/register.html', context)
 
         if User.objects.filter(username=username).exists():
             messages.error(request, 'Username already taken.')
-            return render(request, 'usermanagement/signup.html', {'form_data': request.POST})
+            return render(request, 'usermanagement/register.html', context)
 
         if User.objects.filter(email=email).exists():
             messages.error(request, 'Email already registered.')
-            return render(request, 'usermanagement/signup.html', {'form_data': request.POST})
+            return render(request, 'usermanagement/register.html', context)
+
+        if role == 'DRIVER':
+            license_number = request.POST.get('license_number', '').strip()
+            vehicle_type = request.POST.get('vehicle_type', '').strip()
+            vehicle_registration = request.POST.get('vehicle_registration', '').strip()
+            qualification = request.POST.get('qualification', '').strip()
+            specialization_ids = request.POST.getlist('specialization')
+
+            if not license_number or not vehicle_type or not vehicle_registration or not qualification:
+                messages.error(request, 'All driver fields are required.')
+                return render(request, 'usermanagement/register.html', context)
+
+            if not specialization_ids:
+                messages.error(request, 'Please select at least one specialization.')
+                return render(request, 'usermanagement/register.html', context)
+
+            if vehicle_type not in ['MOBILE_UNIT', 'TOW_TRUCK', 'FLATBED']:
+                messages.error(request, 'Invalid vehicle type.')
+                return render(request, 'usermanagement/register.html', context)
 
         user = User.objects.create_user(
             username=username,
@@ -68,10 +95,30 @@ def signup(request):
             address=request.POST.get('address'),
         )
 
+        if role == 'DRIVER':
+            import json
+            try:
+                qualification_data = json.loads(qualification)
+            except (json.JSONDecodeError, TypeError):
+                qualification_data = [q.strip() for q in qualification.split(',') if q.strip()]
+
+            specialization_data = [int(sid) for sid in specialization_ids]
+
+            DriverStatus.objects.create(
+                user=user,
+                license_number=license_number,
+                vehicle_type=vehicle_type,
+                vehicle_registration=vehicle_registration,
+                qualification=qualification_data,
+                specialization=specialization_data,
+            )
+
         messages.success(request, 'Account created successfully!')
         return redirect('login')
 
-    return render(request, 'usermanagement/register.html')
+    services = Service.objects.filter(active=True)
+    return render(request, 'usermanagement/register.html', {'services': services})
+
 
 def login_view(request):
     if request.method == 'POST':
@@ -80,7 +127,7 @@ def login_view(request):
 
         user = authenticate(request, username=username, password=password)
 
-        if user is not None:
+        if user is not None and user.active:
             login(request, user)
             return redirect('dashboard')
         else:
@@ -94,8 +141,8 @@ def dashboard(request):
         active_jobs = RecoveryRequest.objects.filter(
             status__in=['PENDING', 'IN_PROGRESS', 'ASSIGNED']
         ).count()
-        online_drivers = Driver.objects.filter(status='AVAILABLE').count()
-        drivers = Driver.objects.select_related('user', 'user__profile').all()
+        online_drivers = DriverStatus.objects.filter(status='AVAILABLE', user__active=True, user__status='APPROVED', user__deleted_at__isnull=True,).count()
+        drivers = DriverStatus.objects.select_related('user', 'user__profile').all()
         return render(request, 'usermanagement/admin-dashboard.html', {
             'active_jobs': active_jobs,
             'online_drivers': online_drivers,
@@ -117,7 +164,7 @@ def admin_dashboard(request):
         return redirect("home")
 
     users = User.objects.all()
-    drivers = Driver.objects.select_related("user").all()
+    drivers = DriverStatus.objects.select_related("user").all()
     services = Service.objects.all()
     requests = RecoveryRequest.objects.select_related("member", "service").all()
 
@@ -132,8 +179,8 @@ def admin_dashboard(request):
         "services": services,
         "requests": requests,
         "user_roles": User.Role.choices,
-        "driver_statuses": Driver.Status.choices,
-        "vehicle_types": Driver.VehicleType.choices,
+        "driver_statuses": DriverStatus.Status.choices,
+        "vehicle_types": DriverStatus.VehicleType.choices,
     }
     return render(request, "usermanagement/admin-dashboard.html", context)
 
@@ -174,7 +221,7 @@ def admin_create_driver(request):
             messages.error(request, f"Username '{username}' already exists.")
             return redirect("admin_dashboard")
         user = User.objects.create_user(username=username, email=email, password=password, role=User.Role.DRIVER)
-        Driver.objects.create(user=user, license_number=license_number, vehicle_type=vehicle_type, vehicle_registration=vehicle_registration, qualification=[], specialization=[])
+        DriverStatus.objects.create(user=user, license_number=license_number, vehicle_type=vehicle_type, vehicle_registration=vehicle_registration, qualification=[], specialization=[])
         messages.success(request, f"Driver '{username}' created successfully.")
     return redirect("admin_dashboard")
 
@@ -208,7 +255,7 @@ def admin_delete_user(request, user_id):
 
 @login_required(login_url="login")
 def admin_delete_service(request, service_id):
-    if request.user.role != User.Role.ADMIN:
+    if request.user.role != 'ADMIN':
         return redirect("home")
     service = get_object_or_404(Service, id=service_id)
     service.delete()
@@ -219,11 +266,18 @@ def admin_delete_service(request, service_id):
 def admin_users(request):
     if request.user.role != 'ADMIN':
         return redirect('home')
-    users = User.objects.all()
-    drivers = Driver.objects.select_related('user').all()
+    users = User.objects.filter(role='ADMIN').select_related('profile').all()
     return render(request, 'usermanagement/admin_users.html', {
         'users': users,
-        'drivers': drivers,
+    })
+
+@login_required
+def members(request):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+    members = User.objects.filter(role='MEMBER').select_related('profile').all()
+    return render(request, 'usermanagement/admin_users.html', {
+        'members': members,
     })
 
 @login_required
@@ -245,7 +299,89 @@ def admin_analytics(request):
 def admin_services(request):
     if request.user.role != 'ADMIN':
         return redirect('home')
-    services = Service.objects.all()
+    if request.method == 'POST':
+        action = request.POST.get('action')
+        if action == 'create':
+            name = request.POST.get('name')
+            description = request.POST.get('description')
+            price = request.POST.get('price')
+            estimated_duration = request.POST.get('estimated_duration')
+            active = request.POST.get('active') == 'on'
+            Service.objects.create(
+                name=name,
+                description=description,
+                price=price,
+                estimated_duration=estimated_duration,
+                active=active
+            )
+            messages.success(request, 'Service created successfully.')
+        elif action == 'edit':
+            service_id = request.POST.get('service_id')
+            service = get_object_or_404(Service, id=service_id)
+            service.name = request.POST.get('name')
+            service.description = request.POST.get('description')
+            service.price = request.POST.get('price')
+            service.estimated_duration = request.POST.get('estimated_duration')
+            service.active = request.POST.get('active') == 'on'
+            service.save()
+            messages.success(request, 'Service updated successfully.')
+        return redirect('admin_services')
+    services = Service.objects.filter(active=True).order_by('id')
     return render(request, 'usermanagement/admin_services.html', {
         'services': services,
     })
+
+@login_required
+def admin_delete_service(request, service_id):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+    service = get_object_or_404(Service, id=service_id)
+    service.active = False
+    service.save()
+    messages.success(request, 'Service deleted successfully.')
+    return redirect('admin_services')
+
+@login_required
+def admin_user_requests(request):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+    pending_requests = User.objects.filter(
+        status='PENDING'
+    ).select_related('profile').order_by('-date_joined')
+    return render(request, 'usermanagement/admin_user_requests.html', {
+        'pending_requests': pending_requests,
+    })
+
+
+
+
+
+@login_required
+def driver_requests(request):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+    pending_requests = User.objects.filter(
+        role='DRIVER', status='PENDING'
+    ).select_related('profile').order_by('-date_joined')
+    return render(request, 'usermanagement/admin_user_requests.html', {
+        'pending_requests': pending_requests,
+    })
+
+@login_required
+def admin_handle_request(request, request_id):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+    if request.method == 'POST':
+        user_request = get_object_or_404(User, uuid=request_id)
+        action = request.POST.get('action')
+        if action == 'accept':
+            user_request.status = 'APPROVED'
+            user_request.active = True
+            user_request.save()
+            messages.success(request, f"User '{user_request.username}' approved.")
+        elif action == 'decline':
+            user_request.status = 'REJECTED'
+            user_request.active = False
+            user_request.save()
+            messages.success(request, f"User '{user_request.username}' rejected.")
+    return redirect('admin_user_requests')

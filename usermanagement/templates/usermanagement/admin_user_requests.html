@@ -1,0 +1,216 @@
+{% extends 'portal.html' %}
+{% block title %}User Requests{% endblock %}
+
+{% block content %}
+<div style="max-width:1200px; margin:0 auto; padding:20px;">
+    <h2 style="font-size:28px; font-weight:700; color:#1a1a2e; margin-bottom:30px; text-align:center;">Pending User Requests</h2>
+
+    {% if messages %}
+    <div style="margin-bottom:20px;">
+        {% for message in messages %}
+            <div style="padding:12px 16px; border-radius:8px; margin-bottom:8px; font-size:14px;
+                {% if message.tags == 'success' %}background:#e8f5e9; color:#2e7d32;{% else %}background:#ffebee; color:#c62828;{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:24px; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+        <table style="width:100%; border-collapse:collapse;">
+                <thead>
+                    <tr style="text-align:left; color:#888; font-size:12px; text-transform:uppercase;">
+                        <th style="padding:12px 16px; border-bottom:1px solid #eee;">User ID</th>
+                        <th style="padding:12px 16px; border-bottom:1px solid #eee;">Username</th>
+                        <th style="padding:12px 16px; border-bottom:1px solid #eee;">Email</th>
+                        <th style="padding:12px 16px; border-bottom:1px solid #eee;">Role</th>
+                        <th style="padding:12px 16px; border-bottom:1px solid #eee;">Status</th>
+                        <th style="padding:12px 16px; border-bottom:1px solid #eee;">Joined</th>
+                        <th style="padding:12px 16px; border-bottom:1px solid #eee;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in pending_requests %}
+                    <tr style="transition:background 0.2s;">
+                        <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5; font-weight:600;">#{{ req.uuid }}</td>
+                        <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.username }}</td>
+                        <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.email }}</td>
+                        <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.role }}</td>
+                        <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.status }}</td>
+                        <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.date_joined|date:'Y-m-d H:i' }}</td>
+                        <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <button type="button" onclick="openDriverRequestModal(this)"
+                                    data-username="{{ req.username }}"
+                                    data-email="{{ req.email }}"
+                                    data-role="{{ req.role }}"
+                                    data-status="{{ req.status }}"
+                                    data-joined="{{ req.date_joined|date:'Y-m-d H:i' }}"
+                                    data-first-name="{{ req.profile.first_name|default:'' }}"
+                                    data-last-name="{{ req.profile.last_name|default:'' }}"
+                                    data-phone="{{ req.profile.phone|default:'' }}"
+                                    data-address="{{ req.profile.address|default:'' }}"
+                                    data-membership="{{ req.profile.membership_tier|default:'' }}"
+                                    data-license-number="{{ req.driver.license_number|default:'' }}"
+                                    data-vehicle-type="{{ req.driver.vehicle_type|default:'' }}"
+                                    data-vehicle-registration="{{ req.driver.vehicle_registration|default:'' }}"
+                                    data-qualification="{{ req.driver.qualification|join:', '|default:'' }}"
+                                    data-specialization="{{ req.driver.specialization|join:', '|default:'' }}"
+                                    style="background:#1976d2; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; transition:background 0.2s;"
+                                    onmouseover="this.style.background='#1565c0'" onmouseout="this.style.background='#1976d2'">
+                                Details
+                            </button>
+                            <form method="POST" action="{% url 'admin_handle_request' req.uuid %}" style="display:inline-flex; gap:8px; flex-wrap:wrap;">
+                                {% csrf_token %}
+                                <button type="submit" name="action" value="accept"
+                                        style="background:#4CAF50; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; transition:background 0.2s;"
+                                        onmouseover="this.style.background='#45a049'" onmouseout="this.style.background='#4CAF50'">
+                                    Accept
+                                </button>
+                                <button type="submit" name="action" value="decline"
+                                        style="background:#e53935; color:#fff; border:none; padding:8px 16px; border-radius:6px; font-size:13px; font-weight:600; cursor:pointer; transition:background 0.2s;"
+                                        onmouseover="this.style.background='#d32f2f'" onmouseout="this.style.background='#e53935'"
+                                        onclick="return confirm('Decline this request?')">
+                                    Decline
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="8" style="padding:40px; text-align:center; color:#888;">
+                            No pending requests at the moment.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+<style>
+    #request-details-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.65);
+        align-items: center;
+        justify-content: center;
+        z-index: 1100;
+        padding: 20px;
+    }
+
+    #request-details-modal .modal-card {
+        background: #fff;
+        max-width: 640px;
+        width: 100%;
+        border-radius: 12px;
+        box-shadow: 0 16px 40px rgba(0, 0, 0, 0.25);
+        padding: 24px;
+        position: relative;
+        max-height: 90vh;
+        overflow-y: auto;
+    }
+
+    #request-details-modal .modal-card h3 {
+        margin-top: 0;
+        color: #1a1a2e;
+        font-size: 20px;
+    }
+
+    #request-details-modal .modal-row {
+        margin: 8px 0;
+        display: flex;
+        justify-content: space-between;
+        font-size: 14px;
+        line-height: 1.4;
+    }
+
+    #request-details-modal .modal-row strong {
+        color: #333;
+    }
+
+    #request-details-modal .modal-card hr {
+        border: none;
+        border-top: 1px solid #eee;
+        margin: 16px 0;
+    }
+
+    #request-details-modal .close-btn {
+        position: absolute;
+        right: 16px;
+        top: 16px;
+        background: #f3f3f3;
+        border: 1px solid #ddd;
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        cursor: pointer;
+        font-size: 18px;
+        line-height: 30px;
+        text-align: center;
+        color: #555;
+    }
+</style>
+<div id="request-details-modal">
+    <div class="modal-card">
+        <button class="close-btn" onclick="closeDriverRequestModal()">&times;</button>
+        <h3>Driver Request Details</h3>
+        <div class="modal-row"><strong>Username:</strong><span id="modal-username"></span></div>
+        <div class="modal-row"><strong>Email:</strong><span id="modal-email"></span></div>
+        <div class="modal-row"><strong>Role:</strong><span id="modal-role"></span></div>
+        <div class="modal-row"><strong>Status:</strong><span id="modal-status"></span></div>
+        <div class="modal-row"><strong>Joined:</strong><span id="modal-joined"></span></div>
+        <hr>
+        <h4>Profile</h4>
+        <div class="modal-row"><strong>Name:</strong><span id="modal-profile-name"></span></div>
+        <div class="modal-row"><strong>Phone:</strong><span id="modal-profile-phone"></span></div>
+        <div class="modal-row"><strong>Address:</strong><span id="modal-profile-address"></span></div>
+        <div class="modal-row"><strong>Membership:</strong><span id="modal-profile-membership"></span></div>
+        <hr>
+        <h4>Driver Data</h4>
+        <div class="modal-row"><strong>License No:</strong><span id="modal-driver-license"></span></div>
+        <div class="modal-row"><strong>Vehicle:</strong><span id="modal-driver-vehicle-type"></span></div>
+        <div class="modal-row"><strong>Registration:</strong><span id="modal-driver-registration"></span></div>
+        <div class="modal-row"><strong>Qualifications:</strong><span id="modal-driver-qualification"></span></div>
+        <div class="modal-row"><strong>Specialization:</strong><span id="modal-driver-specialization"></span></div>
+    </div>
+</div>
+
+<script>
+function openDriverRequestModal(button) {
+    document.getElementById('modal-username').innerText = button.dataset.username || 'N/A';
+    document.getElementById('modal-email').innerText = button.dataset.email || 'N/A';
+    document.getElementById('modal-role').innerText = button.dataset.role || 'N/A';
+    document.getElementById('modal-status').innerText = button.dataset.status || 'N/A';
+    document.getElementById('modal-joined').innerText = button.dataset.joined || 'N/A';
+
+    document.getElementById('modal-profile-name').innerText = [button.dataset.firstName, button.dataset.lastName].filter(Boolean).join(' ') || 'N/A';
+    document.getElementById('modal-profile-phone').innerText = button.dataset.phone || 'N/A';
+    document.getElementById('modal-profile-address').innerText = button.dataset.address || 'N/A';
+    document.getElementById('modal-profile-membership').innerText = button.dataset.membership || 'N/A';
+
+    document.getElementById('modal-driver-license').innerText = button.dataset.licenseNumber || 'N/A';
+    document.getElementById('modal-driver-vehicle-type').innerText = button.dataset.vehicleType || 'N/A';
+    document.getElementById('modal-driver-registration').innerText = button.dataset.vehicleRegistration || 'N/A';
+    document.getElementById('modal-driver-qualification').innerText = button.dataset.qualification || 'N/A';
+    document.getElementById('modal-driver-specialization').innerText = button.dataset.specialization || 'N/A';
+
+    document.getElementById('request-details-modal').style.display = 'flex';
+}
+
+function closeDriverRequestModal() {
+    document.getElementById('request-details-modal').style.display = 'none';
+}
+
+window.addEventListener('click', function(event) {
+    const modal = document.getElementById('request-details-modal');
+    if (event.target === modal) {
+        closeDriverRequestModal();
+    }
+});
+</script>
+
+{% endblock %}

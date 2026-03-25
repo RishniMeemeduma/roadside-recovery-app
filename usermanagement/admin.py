@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
-from usermanagement.models import User, UserProfile, Driver, DriverLocation
+from usermanagement.models import User, UserProfile, DriverStatus, DriverLocation
 # Register your models here.
 @admin.register(User)
 class CustomUserAdmin(UserAdmin):
@@ -16,7 +16,7 @@ class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'first_name', 'last_name', 'phone', 'membership_tier')
     list_filter = ('membership_tier',)
 
-@admin.register(Driver)
+@admin.register(DriverStatus)
 class DriverAdmin(admin.ModelAdmin):
     list_display = ('user', 'status', 'vehicle_type', 'license_number', 'acceptance_rate')
     list_filter = ('status', 'vehicle_type')

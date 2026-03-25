@@ -1,6 +1,6 @@
 from django.db import models
 from django.conf import settings
-from usermanagement.models import Driver
+from usermanagement.models import UserProfile, DriverStatus
 
 
 # Create your models here.
@@ -8,7 +8,7 @@ class DriverLocation(models.Model):
     driver = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name='locations'
+        related_name='recovery_locations'
     )
     latitude = models.DecimalField(max_digits=9, decimal_places=6)
     longitude = models.DecimalField(max_digits=9, decimal_places=6)
@@ -69,7 +69,7 @@ class Assignment(models.Model):
         TIMEOUT = 'TIMEOUT', 'Timeout'
 
     request = models.ForeignKey(RecoveryRequest, on_delete=models.CASCADE, related_name='assignments')
-    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='assignments')
+    driver = models.ForeignKey(DriverStatus, on_delete=models.CASCADE, related_name='assignments')
     offer_sent_at = models.DateTimeField()
     driver_response = models.CharField(max_length=10, choices=DriverResponse.choices)
     driver_responded_at = models.DateTimeField(null=True, blank=True)
@@ -86,7 +86,7 @@ class Assignment(models.Model):
 
 class JobHistory(models.Model):
     request = models.OneToOneField(RecoveryRequest, on_delete=models.CASCADE, related_name='job_history')
-    driver = models.ForeignKey(Driver, on_delete=models.CASCADE, related_name='job_histories')
+    driver = models.ForeignKey(DriverStatus, on_delete=models.CASCADE, related_name='job_histories')
     assignment = models.OneToOneField(Assignment, on_delete=models.CASCADE, related_name='job_history')
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()

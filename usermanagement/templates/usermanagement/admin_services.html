@@ -3,6 +3,9 @@
 
 {% block content %}
 <h2 style="font-size:22px; font-weight:700; color:#1a1a2e; margin-bottom:20px;">Services Management</h2>
+<div style="margin-bottom:20px;">
+    <button onclick="openCreateModal()" style="background:#4CAF50; color:#fff; padding:10px 20px; text-decoration:none; border-radius:6px; font-weight:600; border:none; cursor:pointer;">Add New Service</button>
+</div>
 <div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:24px;">
     <table style="width:100%; border-collapse:collapse;">
         <thead>
@@ -22,6 +25,14 @@
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">£{{ service.price }}</td>
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ service.estimated_duration }} min</td>
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">
+                    <button type="button" onclick="openEditModal(this)"
+                            data-id="{{ service.id }}"
+                            data-name="{{ service.name }}"
+                            data-description="{{ service.description }}"
+                            data-price="{{ service.price }}"
+                            data-duration="{{ service.estimated_duration }}"
+                            data-active="{{ service.active }}"
+                            style="background:#1976d2; color:#fff; border:none; padding:4px 8px; border-radius:4px; font-size:12px; cursor:pointer; margin-right:8px;">Edit</button>
                     <a href="{% url 'admin_delete_service' service.id %}" style="color:#e53935; font-size:13px; text-decoration:none;"
                        onclick="return confirm('Delete this service?')">Delete</a>
                 </td>
@@ -32,4 +43,92 @@
         </tbody>
     </table>
 </div>
+
+<div id="create-service-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:1000;">
+    <div style="background:#fff; padding:24px; border-radius:8px; max-width:500px; width:90%;">
+        <h3 style="margin-top:0;">Create New Service</h3>
+        <form method="post" action="{% url 'admin_services' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="create">
+            <div style="margin-bottom:12px;">
+                <label>Name:</label>
+                <input type="text" name="name" required style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label>Description:</label>
+                <textarea name="description" rows="3" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;"></textarea>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label>Price (£):</label>
+                <input type="text" name="price" required style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label>Duration (min):</label>
+                <input type="text" name="estimated_duration" required style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label><input type="checkbox" name="active" checked> Active</label>
+            </div>
+            <button type="submit" style="background:#4CAF50; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Create</button>
+            <button type="button" onclick="closeCreateModal()" style="background:#ccc; color:#000; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; margin-left:8px;">Cancel</button>
+        </form>
+    </div>
+</div>
+
+<div id="edit-service-modal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); align-items:center; justify-content:center; z-index:1000;">
+    <div style="background:#fff; padding:24px; border-radius:8px; max-width:500px; width:90%;">
+        <h3 style="margin-top:0;">Edit Service</h3>
+        <form id="edit-service-form" method="post" action="{% url 'admin_services' %}">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="edit">
+            <input type="hidden" id="edit-service-id" name="service_id">
+            <div style="margin-bottom:12px;">
+                <label>Name:</label>
+                <input type="text" id="edit-name" name="name" required style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label>Description:</label>
+                <textarea id="edit-description" name="description" rows="3" style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;"></textarea>
+            </div>
+            <div style="margin-bottom:12px;">
+                <label>Price (£):</label>
+                <input type="text" id="edit-price" name="price" required style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label>Duration (min):</label>
+                <input type="text" id="edit-duration" name="estimated_duration" required style="width:100%; padding:8px; border:1px solid #ddd; border-radius:4px;">
+            </div>
+            <div style="margin-bottom:12px;">
+                <label><input type="checkbox" id="edit-active" name="active"> Active</label>
+            </div>
+            <button type="submit" style="background:#1976d2; color:#fff; border:none; padding:8px 16px; border-radius:4px; cursor:pointer;">Save</button>
+            <button type="button" onclick="closeEditModal()" style="background:#ccc; color:#000; border:none; padding:8px 16px; border-radius:4px; cursor:pointer; margin-left:8px;">Cancel</button>
+        </form>
+    </div>
+</div>
+
+<script>
+function openCreateModal() {
+    document.getElementById('create-service-modal').style.display = 'flex';
+}
+
+function closeCreateModal() {
+    document.getElementById('create-service-modal').style.display = 'none';
+}
+
+function openEditModal(button) {
+    document.getElementById('edit-service-id').value = button.dataset.id;
+    document.getElementById('edit-name').value = button.dataset.name;
+    document.getElementById('edit-description').value = button.dataset.description;
+    document.getElementById('edit-price').value = button.dataset.price;
+    document.getElementById('edit-duration').value = button.dataset.duration;
+    document.getElementById('edit-active').checked = button.dataset.active === 'True';
+    document.getElementById('edit-service-modal').style.display = 'flex';
+}
+
+function closeEditModal() {
+    document.getElementById('edit-service-modal').style.display = 'none';
+}
+</script>
+
 {% endblock %}
