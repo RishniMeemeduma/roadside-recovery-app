@@ -2,8 +2,61 @@
 {% block title %}Recovery Requests{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+    tr:target {
+        outline: 2px solid #fa8c16;
+        outline-offset: -2px;
+        background: #fff7e6;
+    }
+
+    .request-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .request-meta {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 8px 12px;
+        font-size: 14px;
+    }
+
+    .request-meta dt {
+        color: #666;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .request-meta dd {
+        margin: 0;
+        color: #1a1a2e;
+    }
+
+    #driver-map {
+        width: 100%;
+        height: 400px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        border: 1px solid #e0e0e0;
+    }
+
+    .driver-info-popup {
+        font-size: 12px;
+    }
+
+    .driver-info-popup strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #1a1a2e;
+    }
+</style>
 <h2 style="font-size:22px; font-weight:700; color:#1a1a2e; margin-bottom:20px;">Recovery Requests</h2>
 <div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:24px;">
+    <h3 style="font-size:16px; font-weight:600; color:#1a1a2e; margin-bottom:12px;">Driver Locations (Real-time)</h3>
+    <div id="driver-map"></div>
     <table style="width:100%; border-collapse:collapse;">
         <thead>
             <tr style="text-align:left; color:#888; font-size:12px; text-transform:uppercase;">
@@ -12,11 +65,12 @@
                 <th style="padding:12px 16px; border-bottom:1px solid #eee;">Service</th>
                 <th style="padding:12px 16px; border-bottom:1px solid #eee;">Status</th>
                 <th style="padding:12px 16px; border-bottom:1px solid #eee;">Priority</th>
+                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for req in requests %}
-            <tr>
+            <tr id="request-{{ req.id }}">
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">#{{ req.id }}</td>
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.member.username }}</td>
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.service.name }}</td>
@@ -32,11 +86,151 @@
                     {% endif %}
                 </td>
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.priority }}</td>
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">
+                    {% if req.status == 'PENDING' %}
+                    <div class="request-actions">
+                        <button type="button" data-bs-toggle="modal" data-bs-target="#assignRequestModal{{ req.id }}" style="border:none; border-radius:8px; background:#1976d2; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Assign</button>
+                        <form method="post" action="{% url 'decline_recovery_request' req.id %}">
+                            {% csrf_token %}
+                            <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
+                        </form>
+                    </div>
+                    {% elif req.status == 'ASSIGNED' %}
+                    <form method="post" action="{% url 'decline_recovery_request' req.id %}">
+                        {% csrf_token %}
+                        <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
+                    </form>
+                    {% else %}
+                    <span style="font-size:13px; color:#888;">No actions</span>
+                    {% endif %}
+                </td>
             </tr>
             {% empty %}
-            <tr><td colspan="5" style="padding:20px; text-align:center; color:#888;">No recovery requests found.</td></tr>
+            <tr><td colspan="6" style="padding:20px; text-align:center; color:#888;">No recovery requests found.</td></tr>
             {% endfor %}
         </tbody>
     </table>
 </div>
+
+{% for req in requests %}
+    {% if req.status == 'PENDING' %}
+    <div class="modal fade" id="assignRequestModal{{ req.id }}" tabindex="-1" aria-labelledby="assignRequestModalLabel{{ req.id }}" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="assignRequestModalLabel{{ req.id }}">Assign Request #{{ req.id }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="post" action="{% url 'assign_recovery_request' req.id %}">
+                    <div class="modal-body">
+                        {% csrf_token %}
+                        <div class="mb-4">
+                            <h6 style="font-size:15px; font-weight:700; color:#1a1a2e; margin-bottom:12px;">Recovery Request Details</h6>
+                            <dl class="request-meta">
+                                <dt>Member</dt>
+                                <dd>{{ req.member.username }}</dd>
+                                <dt>Service</dt>
+                                <dd>{{ req.service.name }}</dd>
+                                <dt>Priority</dt>
+                                <dd>{{ req.priority }}</dd>
+                                <dt>Place</dt>
+                                <dd>{{ req.place|default:'-' }}</dd>
+                                <dt>Vehicle</dt>
+                                <dd>{{ req.vehicle_details }}</dd>
+                                <dt>Location</dt>
+                                <dd>{{ req.address }}</dd>
+                                <dt>Coordinates</dt>
+                                <dd>{{ req.location_latitude }}, {{ req.location_longitude }}</dd>
+                                <dt>Issue</dt>
+                                <dd>{{ req.issue_description }}</dd>
+                                <dt>Created</dt>
+                                <dd>{{ req.created_at|date:'M j, g:i A' }}</dd>
+                            </dl>
+                        </div>
+                        <div>
+                            <label for="driverSelect{{ req.id }}" class="form-label" style="font-weight:600; color:#1a1a2e;">Assign Driver</label>
+                            <select id="driverSelect{{ req.id }}" name="driver_id" class="form-select" required>
+                                <option value="">Choose an available driver</option>
+                                {% for driver in available_drivers %}
+                                <option value="{{ driver.id }}">{{ driver.user.username }} ({{ driver.vehicle_type }})</option>
+                                {% endfor %}
+                            </select>
+                            {% if not available_drivers %}
+                            <div style="margin-top:8px; font-size:13px; color:#888;">No available drivers right now.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" {% if not available_drivers %}disabled{% endif %}>Assign Driver</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+{% endfor %}
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function() {
+    let map;
+    let markers = {};
+    const apiUrl = "{% url 'get_driver_locations' %}";
+
+    function initMap() {
+        // Initialize map centered on UK (default)
+        map = L.map('driver-map').setView([54.5973, -3.4360], 6);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18,
+        }).addTo(map);
+    }
+
+    function updateDriverLocations() {
+        fetch(apiUrl)
+            .then(response => response.json())
+            .then(data => {
+                // Clear old markers
+                Object.keys(markers).forEach(driverId => {
+                    map.removeLayer(markers[driverId]);
+                });
+                markers = {};
+
+                // Add new markers for each driver
+                data.drivers.forEach(driver => {
+                    const marker = L.marker([driver.latitude, driver.longitude], {
+                        title: driver.name
+                    }).addTo(map);
+
+                    const popupContent = `<div class="driver-info-popup">
+                        <strong>${driver.name}</strong>
+                        Vehicle: ${driver.vehicle_registration}<br>
+                        Type: ${driver.vehicle_type}<br>
+                        <small>Lat: ${driver.latitude.toFixed(4)}, Lon: ${driver.longitude.toFixed(4)}</small>
+                    </div>`;
+
+                    marker.bindPopup(popupContent);
+                    markers[driver.id] = marker;
+                });
+
+                // Fit map to show all drivers
+                if (data.drivers.length > 0) {
+                    const group = new L.featureGroup(Object.values(markers));
+                    map.fitBounds(group.getBounds().pad(0.1));
+                }
+            })
+            .catch(error => console.error('Error fetching driver locations:', error));
+    }
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initMap();
+        updateDriverLocations();
+        
+        // Update driver locations every 5 seconds
+        setInterval(updateDriverLocations, 5000);
+    });
+})();
+</script>
 {% endblock %}

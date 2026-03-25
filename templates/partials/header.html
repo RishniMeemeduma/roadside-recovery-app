@@ -15,7 +15,34 @@
         {% if user.is_authenticated %}
             <a href="#" style="color:#555; text-decoration:none; font-size:14px;">Pricing</a>
             <a href="#" style="color:#555; text-decoration:none; font-size:14px;">Contact</a>
-            <span style="font-size:20px; cursor:pointer;">🔔</span>
+            <div class="dropdown">
+                <button class="btn p-0 border-0 bg-transparent" data-bs-toggle="dropdown" aria-expanded="false" style="position:relative; font-size:22px; line-height:1; cursor:pointer;">
+                    🔔
+                    {% if pending_request_count %}
+                    <span style="position:absolute; top:-6px; right:-8px; background:#e53935; color:#fff; font-size:10px; font-weight:700; border-radius:999px; padding:2px 5px; line-height:1;">{{ pending_request_count }}</span>
+                    {% endif %}
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end p-0" style="min-width:320px; max-width:360px;">
+                    <li class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                        <strong style="font-size:14px;">Pending Requests</strong>
+                        {% if pending_request_count %}<span class="badge bg-danger">{{ pending_request_count }}</span>{% endif %}
+                    </li>
+                    {% if pending_requests_preview %}
+                        {% for req in pending_requests_preview %}
+                        <li>
+                            <a href="{% url 'admin_recovery_requests' %}#request-{{ req.id }}" class="dropdown-item py-2 px-3 border-bottom">
+                                <div style="font-weight:600; font-size:13px;">{{ req.member.username }}</div>
+                                <div style="font-size:12px; color:#666;">{{ req.service.name }} &mdash; {{ req.address|truncatechars:40 }}</div>
+                                <div style="font-size:11px; color:#999;">{{ req.created_at|timesince }} ago</div>
+                            </a>
+                        </li>
+                        {% endfor %}
+                        <li><a href="{% url 'admin_recovery_requests' %}" class="dropdown-item text-center py-2" style="font-size:13px; color:#1976d2;">View all recovery requests</a></li>
+                    {% else %}
+                        <li class="px-3 py-3 text-center" style="font-size:13px; color:#999;">No pending requests</li>
+                    {% endif %}
+                </ul>
+            </div>
             <div class="dropdown">
                 <button class="btn btn-primary rounded-circle" data-bs-toggle="dropdown">
                     {{ user.username|first|upper }}

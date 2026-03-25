@@ -100,3 +100,6 @@ def uptime_display(self):
         minutes = int((delta.total_seconds() % 3600) // 60)
         return f"{hours}h {minutes}m"
     return "0m"
+
+
+

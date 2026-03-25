@@ -1,28 +1,18 @@
 import requests as http_requests
 from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.views.decorators.http import require_POST
-from django.shortcuts import redirect, render
-from django.contrib.auth import login
-from .forms import RegistrationForm
-from django.contrib.auth import authenticate, login, logout
-from django.shortcuts import render, redirect
-from django.contrib import messages
-from usermanagement.models import User, UserProfile, DriverStatus
-from django.contrib.auth.decorators import login_required
-from django.contrib import messages
-from django.contrib.auth import authenticate, login, logout
-from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
-from recovery.models import RecoveryRequest
+from .forms import RegistrationForm
+from recovery.models import Assignment, RecoveryRequest, JobHistory
 from services.models import Service
-from usermanagement.models import DriverStatus, User, UserProfile
-
-from recovery.models import RecoveryRequest
-from django.contrib import messages
-from django.shortcuts import get_object_or_404
+from usermanagement.models import DriverLocation, DriverStatus, User, UserProfile
 
 
 
@@ -147,14 +137,39 @@ def dashboard(request):
         ).count()
         online_drivers = DriverStatus.objects.filter(status='AVAILABLE', user__active=True, user__status='APPROVED', user__deleted_at__isnull=True,).count()
         drivers = DriverStatus.objects.select_related('user', 'user__profile').all()
+        pending_qs = RecoveryRequest.objects.filter(status='PENDING').select_related('member', 'service')
         return render(request, 'usermanagement/admin-dashboard.html', {
             'active_jobs': active_jobs,
             'online_drivers': online_drivers,
             'avg_response': 32,
             'drivers': drivers,
+            'new_requests': pending_qs.order_by('-created_at')[:10],
+            'new_request_count': pending_qs.count(),
         })
     elif request.user.role == 'DRIVER':
-        return render(request, 'usermanagement/driver_dashboard.html')
+        driver_status = DriverStatus.objects.select_related('user').get(user=request.user)
+        # Get current assignment if any
+        current_assignment = Assignment.objects.filter(
+            driver=driver_status,
+            driver_response=Assignment.DriverResponse.ACCEPTED
+        ).select_related(
+            'request__member',
+            'request__service'
+        ).order_by('-created_at').first()
+
+        # Get past job history
+        past_jobs = JobHistory.objects.filter(
+            driver=driver_status
+        ).select_related(
+            'request__service',
+            'request__member'
+        ).order_by('-end_time')[:5]
+
+        return render(request, 'usermanagement/driver_dashboard.html', {
+            'driver_status': driver_status,
+            'current_assignment': current_assignment,
+            'past_jobs': past_jobs,
+        })
     else:
         services = Service.objects.filter(active=True).order_by('id')
         today_requests = RecoveryRequest.objects.filter(
@@ -203,6 +218,8 @@ def admin_dashboard(request):
     drivers = DriverStatus.objects.select_related("user").all()
     services = Service.objects.all()
     requests = RecoveryRequest.objects.select_related("member", "service").all()
+    pending_qs = requests.filter(status='PENDING')
+    new_requests = pending_qs.order_by('-created_at')[:10]
 
     context = {
         "total_users": users.count(),
@@ -210,6 +227,8 @@ def admin_dashboard(request):
         "total_requests": requests.count(),
         "total_services": services.count(),
         "active_requests": requests.filter(status__in=["PENDING", "IN_PROGRESS", "ASSIGNED"]).count(),
+        "new_requests": new_requests,
+        "new_request_count": pending_qs.count(),
         "users": users,
         "drivers": drivers,
         "services": services,
@@ -311,7 +330,7 @@ def admin_users(request):
 def members(request):
     if request.user.role != 'ADMIN':
         return redirect('home')
-    members = User.objects.filter(role='MEMBER').select_related('profile').all()
+    members = User.objects.filter(role__in=['MEMBER', 'DRIVER']).select_related('profile').all()
     return render(request, 'usermanagement/admin_users.html', {
         'users': members,
     })
@@ -320,10 +339,184 @@ def members(request):
 def admin_recovery_requests(request):
     if request.user.role != 'ADMIN':
         return redirect('home')
-    requests_list = RecoveryRequest.objects.select_related('member', 'service').all()
+    requests_list = RecoveryRequest.objects.select_related('member', 'service').prefetch_related('assignments__driver__user').order_by('-created_at')
+    available_drivers = DriverStatus.objects.select_related('user').filter(
+        status=DriverStatus.Status.AVAILABLE,
+        user__active=True,
+        user__status='APPROVED',
+        user__deleted_at__isnull=True,
+    ).order_by('user__username')
     return render(request, 'usermanagement/admin_recovery_requests.html', {
         'requests': requests_list,
+        'available_drivers': available_drivers,
     })
+
+
+@login_required
+def get_driver_locations(request):
+    """API endpoint returning driver locations in JSON format."""
+    if request.user.role != 'ADMIN':
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+    drivers = DriverStatus.objects.select_related('user').filter(
+        status=DriverStatus.Status.AVAILABLE,
+        user__active=True,
+        user__status='APPROVED',
+        user__deleted_at__isnull=True,
+    ).order_by('user__username')
+
+    driver_locations = []
+    for driver in drivers:
+        location = driver.user.usermanagement_locations.filter(is_current=True).first()
+        if location:
+            driver_locations.append({
+                'id': driver.id,
+                'name': driver.user.username,
+                'latitude': float(location.latitude),
+                'longitude': float(location.longitude),
+                'vehicle_type': driver.vehicle_type,
+                'vehicle_registration': driver.vehicle_registration,
+            })
+
+    return JsonResponse({
+        'drivers': driver_locations,
+        'count': len(driver_locations),
+    })
+
+
+@login_required
+@require_POST
+def update_driver_location(request):
+    """API endpoint for drivers to update their location."""
+    if request.user.role != 'DRIVER':
+        return JsonResponse({'error': 'Only drivers can update location'}, status=403)
+
+    try:
+        import json
+        data = json.loads(request.body)
+        latitude = data.get('latitude')
+        longitude = data.get('longitude')
+
+        if latitude is None or longitude is None:
+            return JsonResponse({'error': 'Latitude and longitude required'}, status=400)
+
+        # Mark old locations as not current
+        DriverLocation.objects.filter(driver=request.user).update(is_current=False)
+
+        # Create new location record
+        location = DriverLocation.objects.create(
+            driver=request.user,
+            latitude=latitude,
+            longitude=longitude,
+            is_current=True,
+        )
+
+        return JsonResponse({
+            'success': True,
+            'latitude': float(location.latitude),
+            'longitude': float(location.longitude),
+        })
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+@login_required
+@require_POST
+def update_driver_status(request):
+    """Update driver online/offline status."""
+    if request.user.role != 'DRIVER':
+        return JsonResponse({'error': 'Only drivers can update status'}, status=403)
+
+    try:
+        import json
+        data = json.loads(request.body)
+        status = data.get('status')
+
+        if status not in ['AVAILABLE', 'OFFLINE']:
+            return JsonResponse({'error': 'Invalid status'}, status=400)
+
+        driver_status = DriverStatus.objects.get(user=request.user)
+        driver_status.status = status
+        driver_status.save(update_fields=['status', 'updated_at'])
+
+        return JsonResponse({
+            'success': True,
+            'status': status,
+        })
+    except DriverStatus.DoesNotExist:
+        return JsonResponse({'error': 'Driver status not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+@login_required
+@require_POST
+def assign_recovery_request(request, request_id):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+
+    recovery_request = get_object_or_404(RecoveryRequest, id=request_id)
+    redirect_target = f"{reverse('admin_recovery_requests')}#request-{request_id}"
+
+    if recovery_request.status != 'PENDING':
+        messages.error(request, 'Only pending requests can be assigned.')
+        return redirect(redirect_target)
+
+    driver_id = request.POST.get('driver_id')
+    if not driver_id:
+        messages.error(request, 'Select a driver before assigning the request.')
+        return redirect(redirect_target)
+
+    driver = get_object_or_404(
+        DriverStatus.objects.select_related('user').filter(
+            status=DriverStatus.Status.AVAILABLE,
+            user__active=True,
+            user__status='APPROVED',
+            user__deleted_at__isnull=True,
+        ),
+        id=driver_id,
+    )
+
+    now = timezone.now()
+    Assignment.objects.create(
+        request=recovery_request,
+        driver=driver,
+        offer_sent_at=now,
+        driver_response=Assignment.DriverResponse.ACCEPTED,
+        driver_responded_at=now,
+        accepted_at=now,
+    )
+    recovery_request.status = 'ASSIGNED'
+    recovery_request.save(update_fields=['status', 'updated_at'])
+    driver.status = DriverStatus.Status.ON_TRIP
+    driver.save(update_fields=['status', 'updated_at'])
+
+    messages.success(request, f"Request #{recovery_request.id} assigned to {driver.user.username}.")
+    return redirect(redirect_target)
+
+
+@login_required
+@require_POST
+def decline_recovery_request(request, request_id):
+    if request.user.role != 'ADMIN':
+        return redirect('home')
+
+    recovery_request = get_object_or_404(RecoveryRequest, id=request_id)
+    redirect_target = f"{reverse('admin_recovery_requests')}#request-{request_id}"
+
+    if recovery_request.status in {'COMPLETED', 'CANCELLED'}:
+        messages.error(request, 'This request can no longer be declined.')
+        return redirect(redirect_target)
+
+    latest_assignment = recovery_request.assignments.select_related('driver__user').order_by('-created_at').first()
+    if latest_assignment and latest_assignment.driver.status == DriverStatus.Status.ON_TRIP:
+        latest_assignment.cancellation_reason = 'Declined by admin'
+        latest_assignment.save(update_fields=['cancellation_reason', 'updated_at'])
+        latest_assignment.driver.status = DriverStatus.Status.AVAILABLE
+        latest_assignment.driver.save(update_fields=['status', 'updated_at'])
+
+    recovery_request.status = 'CANCELLED'
+    recovery_request.save(update_fields=['status', 'updated_at'])
+    messages.success(request, f"Request #{recovery_request.id} declined.")
+    return redirect(redirect_target)
 
 @login_required
 def admin_analytics(request):
@@ -524,7 +717,7 @@ def submit_request(request):
             vehicle_details = vehicle_registration.upper()
 
         try:
-            RecoveryRequest.objects.create(
+            recovery_request = RecoveryRequest.objects.create(
                 member=request.user,
                 service=service,
                 location_latitude=latitude,
@@ -536,6 +729,7 @@ def submit_request(request):
                 priority='EMERGENCY' if place == 'MOTORWAY' else 'NORMAL',
                 place=place,
             )
+
             messages.success(request, 'Recovery request submitted successfully!')
             return redirect('dashboard')
         except Exception as e:

@@ -1,0 +1,676 @@
+{% extends 'portal.html' %}
+{% block title %}Driver Dashboard{% endblock %}
+
+{% block content %}
+<style>
+    .driver-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+    }
+
+    .driver-info {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .driver-avatar {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 24px;
+        font-weight: bold;
+    }
+
+    .driver-name h2 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+        color: #1a1a2e;
+    }
+
+    .driver-name p {
+        margin: 4px 0 0 0;
+        font-size: 13px;
+        color: #888;
+    }
+
+    .go-online-btn {
+        padding: 8px 24px;
+        border-radius: 20px;
+        border: 2px solid #4CAF50;
+        background: white;
+        color: red;
+        font-weight: 600;
+        cursor: pointer;
+        transition: 0.3s;
+    }
+
+    .go-online-btn:hover {
+        background: #f0f0f0;
+    }
+
+    .go-online-btn.online {
+        background: red;
+        color: white;
+        border-color: red;
+    }
+
+    .go-online-btn.offline {
+        background: green;
+        color: white;
+        border-color: green;
+    }
+
+    .go-online-btn.offline:hover {
+        background: green;
+    }
+
+    .dispatch-card {
+        background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+        color: white;
+        border-radius: 16px;
+        padding: 32px;
+        margin-bottom: 30px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .dispatch-card.emergency {
+        background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
+    }
+
+    .dispatch-card.urgent {
+        background: linear-gradient(135deg, #f57c00 0%, #e65100 100%);
+    }
+
+    .dispatch-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 200px;
+        height: 200px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 50%;
+        transform: translate(50px, -50px);
+    }
+
+    .dispatch-badge {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.3);
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        margin-bottom: 20px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .dispatch-timer {
+        position: absolute;
+        top: 32px;
+        right: 32px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.2);
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: 700;
+        z-index: 1;
+    }
+
+    .dispatch-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin: 20px 0 30px 0;
+        position: relative;
+        z-index: 1;
+    }
+
+    .dispatch-info {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .info-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .info-icon {
+        width: 28px;
+        height: 28px;
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        flex-shrink: 0;
+    }
+
+    .info-text {
+        flex: 1;
+    }
+
+    .info-text .label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        opacity: 0.9;
+        display: block;
+        margin-bottom: 4px;
+    }
+
+    .info-text .value {
+        font-size: 15px;
+        font-weight: 600;
+    }
+
+    .payout-box {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+    }
+
+    .payout-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        opacity: 0.9;
+        display: block;
+        margin-bottom: 8px;
+    }
+
+    .payout-amount {
+        font-size: 32px;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .payout-note {
+        font-size: 12px;
+        opacity: 0.9;
+    }
+
+    .dispatch-actions {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 12px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .decline-btn, .accept-btn {
+        padding: 14px 24px;
+        border-radius: 8px;
+        border: none;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: 0.3s;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .decline-btn {
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+        border: 2px solid rgba(255, 255, 255, 0.5);
+    }
+
+    .decline-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+    }
+
+    .accept-btn {
+        background: white;
+        color: #1976d2;
+        font-weight: 700;
+    }
+
+    .accept-btn:hover {
+        background: #f5f5f5;
+    }
+
+    .no-assignment {
+        text-align: center;
+        padding: 60px 20px;
+        color: #888;
+    }
+
+    .no-assignment-icon {
+        font-size: 48px;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+
+    .section-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin-bottom: 16px;
+        margin-top: 30px;
+    }
+
+    .past-jobs {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .job-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+    }
+
+    .job-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .job-icon.completed {
+        background: #e8f5e9;
+        color: #4CAF50;
+    }
+
+    .job-icon.failed {
+        background: #ffebee;
+        color: #f44336;
+    }
+
+    .job-details {
+        flex: 1;
+    }
+
+    .job-name {
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-bottom: 2px;
+    }
+
+    .job-location {
+        font-size: 13px;
+        color: #888;
+    }
+
+    .location-sharing-toggle {
+        margin-top: 20px;
+        padding: 16px;
+        background: #f5f5f5;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .toggle-btn {
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: none;
+        font-weight: 600;
+        cursor: pointer;
+        transition: 0.3s;
+    }
+
+    .toggle-btn.start {
+        background: #4CAF50;
+        color: white;
+    }
+
+    .toggle-btn.stop {
+        background: #f44336;
+        color: white;
+    }
+</style>
+
+<!-- Driver Header -->
+<div class="driver-header">
+    <div class="driver-info">
+        <div class="driver-avatar" id="driverAvatar">{{ driver_status.user.username|first|upper }}</div>
+        <div class="driver-name">
+            <h2>{{ driver_status.user.username }}</h2>
+            <p>{{ driver_status.vehicle_registration }} • {{ driver_status.vehicle_type }}</p>
+        </div>
+    </div>
+    <button class="go-online-btn {% if driver_status.status == 'AVAILABLE' %}online{% else %}offline{% endif %}" id="goOnlineBtn" onclick="toggleDriverStatus()">
+        {% if driver_status.status == 'AVAILABLE' %}Go Offline{% else %}Go Online{% endif %}
+    </button>
+</div>
+
+<!-- Current Assignment (Dispatch Card) -->
+{% if current_assignment %}
+<div class="dispatch-card {% if current_assignment.request.priority == 'EMERGENCY' %}emergency{% elif current_assignment.request.priority == 'URGENT' %}urgent{% endif %}">
+    <div class="dispatch-badge">
+        {% if current_assignment.request.priority == 'EMERGENCY' %}
+            🚨 EMERGENCY DISPATCH
+        {% elif current_assignment.request.priority == 'URGENT' %}
+            ⚠️ URGENT DISPATCH
+        {% else %}
+            ⭐ {{ current_assignment.request.priority }} DISPATCH
+        {% endif %}
+    </div>
+    <div class="dispatch-timer" id="timer">⏱ 0:00</div>
+
+    <div class="dispatch-content">
+        <!-- Location & Issue Info -->
+        <div class="dispatch-info">
+            <div class="info-item">
+                <div class="info-icon">📍</div>
+                <div class="info-text">
+                    <span class="label">LOCATION</span>
+                    <span class="value">{{ current_assignment.request.address }}</span>
+                    <span class="value" style="font-size: 12px; opacity: 0.9;">{{ current_assignment.request.location_latitude }}, {{ current_assignment.request.location_longitude }}</span>
+                </div>
+            </div>
+
+            <div class="info-item">
+                <div class="info-icon">⚠️</div>
+                <div class="info-text">
+                    <span class="label">VEHICLE ISSUE</span>
+                    <span class="value">{{ current_assignment.request.issue_description }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payout Box -->
+        <div class="payout-box">
+            <span class="payout-label">GUARANTEED PAYOUT</span>
+            <div class="payout-amount">£{{ current_assignment.request.service.price }}</div>
+            <span class="payout-note">💳 instant transfer</span>
+        </div>
+    </div>
+
+    <!-- Action Buttons -->
+    <div class="dispatch-actions">
+        <button class="decline-btn" onclick="declineAssignment()">Decline</button>
+        <button class="accept-btn" onclick="acceptAssignment()">Accept & Start</button>
+    </div>
+</div>
+
+<!-- Location Sharing Section -->
+<div style="background: white; border: 1px solid #e0e0e0; border-radius: 12px; padding: 20px; margin-bottom: 30px;">
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
+        <div>
+            <h3 style="font-size: 16px; font-weight: 700; color: #1a1a2e; margin: 0 0 8px 0;">24/7 Location Tracking</h3>
+            <p style="margin: 0; color: #666; font-size: 13px;">Share your live position so the control center can track you</p>
+            <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
+                <div style="width: 8px; height: 8px; border-radius: 50%; background: #ccc;" id="locationIndicator"></div>
+                <span id="locationStatus" style="font-size: 12px; color: #888;">Inactive</span>
+            </div>
+        </div>
+        <button class="toggle-btn start" id="toggleLocationBtn" onclick="toggleLocationSharing()" style="white-space: nowrap;">Start Sharing</button>
+    </div>
+</div>
+
+{% else %}
+<div style="background: white; border: 1px solid #e0e0e0; border-radius: 16px; padding: 60px 20px;">
+    <div class="no-assignment">
+        <div class="no-assignment-icon">⏳</div>
+        <h3 style="font-size: 18px; margin: 0 0 8px 0;">No Active Assignment</h3>
+        <p style="margin: 0; color: #999;">You'll receive a dispatch when one becomes available</p>
+        
+        <!-- Location Sharing for waiting drivers -->
+        <div style="margin-top: 30px; padding-top: 30px; border-top: 1px solid #eee;">
+            <p style="color: #666; margin-bottom: 12px;">You can share your location while waiting</p>
+            <button class="toggle-btn start" style="width: 200px;" id="toggleLocationBtn" onclick="toggleLocationSharing()">Start Sharing Location</button>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Past Job Activity -->
+<h3 class="section-title">Past Job Activity</h3>
+<div class="past-jobs">
+    {% for job in past_jobs %}
+    <div class="job-item">
+        <div class="job-icon {% if job.completion_time_minutes %}completed{% else %}failed{% endif %}">
+            {% if job.completion_time_minutes %}✓{% else %}✕{% endif %}
+        </div>
+        <div class="job-details">
+            <div class="job-name">{{ job.request.service.name }}</div>
+            <div class="job-location">{{ job.request.address }}</div>
+            {% if job.completion_time_minutes %}
+            <small style="color: #999;">{{ job.completion_time_minutes }} min • Rating: {% for i in "12345" %}{% if forloop.counter <= job.member_rating %}⭐{% else %}☆{% endif %}{% endfor %}</small>
+            {% endif %}
+        </div>
+    </div>
+    {% empty %}
+    <div style="padding: 20px; text-align: center; color: #999;">
+        <p style="margin: 0;">No past jobs yet</p>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+(function() {
+    let locationInterval = null;
+    let isLocationSharingActive = false;
+    let timerInterval = null;
+    let startTime = null;
+    let currentDriverStatus = "{{ driver_status.status }}";
+    const updateLocationApiUrl = "{% url 'update_driver_location' %}";
+    const updateStatusApiUrl = "{% url 'update_driver_status' %}";
+    const csrfToken = "{{ csrf_token }}";
+
+    // ============ TIMER ============
+    function startTimer() {
+        startTime = Date.now();
+        
+        function updateDisplay() {
+            const elapsed = Math.floor((Date.now() - startTime) / 1000);
+            const mins = Math.floor(elapsed / 60);
+            const secs = elapsed % 60;
+            document.getElementById('timer').textContent = 
+                `⏱ ${mins}:${secs.toString().padStart(2, '0')}`;
+        }
+
+        updateDisplay();
+        timerInterval = setInterval(updateDisplay, 1000);
+    }
+
+    // ============ ACCEPT & DECLINE ============
+    window.acceptAssignment = function() {
+        if (!confirm('Accept this dispatch?')) return;
+        startTimer();
+        toggleLocationSharing(); // Auto-enable location sharing
+        alert('✓ Dispatch accepted! Location sharing activated.');
+        // TODO: Add actual API call to update assignment status
+    };
+
+    window.declineAssignment = function() {
+        if (!confirm('Decline this dispatch?')) return;
+        alert('✓ Dispatch declined');
+        // TODO: Add actual API call to decline assignment
+    };
+
+    // ============ DRIVER STATUS ============
+    window.toggleDriverStatus = function() {
+        const btn = document.getElementById('goOnlineBtn');
+        const newStatus = currentDriverStatus === 'AVAILABLE' ? 'OFFLINE' : 'AVAILABLE';
+
+        fetch(updateStatusApiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({
+                status: newStatus,
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                currentDriverStatus = newStatus;
+                
+                if (newStatus === 'AVAILABLE') {
+                    btn.textContent = 'Go Offline';
+                    btn.classList.remove('offline');
+                    btn.classList.add('online');
+                    alert('✓ You are now online and available for dispatches');
+                } else {
+                    btn.textContent = 'Go Online';
+                    btn.classList.remove('online');
+                    btn.classList.add('offline');
+                    stopLocationSharing();
+                    alert('✓ You are now offline');
+                }
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error updating status:', error);
+            alert('Failed to update status');
+        });
+    };
+
+    // ============ LOCATION SHARING ============
+    function updateLocationUI(isActive, coords = null) {
+        const btn = document.getElementById('toggleLocationBtn');
+        const indicator = document.getElementById('locationIndicator');
+        const status = document.getElementById('locationStatus');
+
+        if (isActive) {
+            btn.textContent = 'Stop Sharing';
+            btn.classList.remove('start');
+            btn.classList.add('stop');
+            indicator.style.background = '#4CAF50';
+            indicator.style.boxShadow = '0 0 8px rgba(76, 175, 80, 0.6)';
+            status.textContent = 'Active - Admin can see your location';
+            status.style.color = '#4CAF50';
+        } else {
+            btn.textContent = 'Start Sharing';
+            btn.classList.add('start');
+            btn.classList.remove('stop');
+            indicator.style.background = '#ccc';
+            indicator.style.boxShadow = 'none';
+            status.textContent = 'Inactive';
+            status.style.color = '#888';
+        }
+    }
+
+    function sendLocation(position) {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+
+        fetch(updateLocationApiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({
+                latitude: lat,
+                longitude: lon,
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                console.error('Failed to update location:', data.error);
+            }
+        })
+        .catch(error => console.error('Error sending location:', error));
+    }
+
+    function handleLocationError(error) {
+        console.error('Geolocation error:', error);
+        let errorMsg = 'Enable device location to share your position';
+        
+        switch(error.code) {
+            case error.PERMISSION_DENIED:
+                errorMsg = 'Location permission denied. Enable in browser settings.';
+                break;
+            case error.POSITION_UNAVAILABLE:
+                errorMsg = 'Location service unavailable';
+                break;
+            case error.TIMEOUT:
+                errorMsg = 'Location request timed out';
+                break;
+        }
+        alert(errorMsg);
+        isLocationSharingActive = false;
+        updateLocationUI(false);
+    }
+
+    function startLocationSharing() {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            return;
+        }
+
+        isLocationSharingActive = true;
+        
+        // Get location immediately
+        navigator.geolocation.getCurrentPosition(sendLocation, handleLocationError, {
+            enableHighAccuracy: true,
+            timeout: 5000,
+            maximumAge: 0
+        });
+
+        // Send location every 10 seconds
+        locationInterval = setInterval(() => {
+            if (isLocationSharingActive) {
+                navigator.geolocation.getCurrentPosition(sendLocation, handleLocationError, {
+                    enableHighAccuracy: true,
+                    timeout: 5000,
+                    maximumAge: 0
+                });
+            }
+        }, 10000);
+
+        updateLocationUI(true);
+    }
+
+    function stopLocationSharing() {
+        isLocationSharingActive = false;
+        if (locationInterval) {
+            clearInterval(locationInterval);
+        }
+        updateLocationUI(false);
+    }
+
+    window.toggleLocationSharing = function() {
+        if (isLocationSharingActive) {
+            stopLocationSharing();
+        } else {
+            startLocationSharing();
+        }
+    };
+
+    // Stop sharing when leaving page
+    window.addEventListener('beforeunload', stopLocationSharing);
+})();
+</script>
+{% endblock %}
