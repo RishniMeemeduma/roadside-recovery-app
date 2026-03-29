@@ -2,6 +2,7 @@
 {% block title %}Driver Dashboard{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <style>
     .driver-header {
         display: flex;
@@ -351,6 +352,29 @@
         background: #f44336;
         color: white;
     }
+
+    #job-location-map {
+        width: 100%;
+        height: 340px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        margin-top: 16px;
+    }
+
+    .navigation-btn {
+        margin-top: 12px;
+        padding: 10px 16px;
+        border: none;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #0f4fa8;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .navigation-btn:hover {
+        background: #f0f4ff;
+    }
 </style>
 
 <!-- Driver Header -->
@@ -410,11 +434,21 @@
         </div>
     </div>
 
-    <!-- Action Buttons -->
-    <div class="dispatch-actions">
+    {% if current_assignment.request.status == 'ASSIGNED' %}
+    <div class="dispatch-actions" id="dispatch-actions">
         <button class="decline-btn" onclick="declineAssignment()">Decline</button>
-        <button class="accept-btn" onclick="acceptAssignment()">Accept & Start</button>
+        <button
+            class="accept-btn"
+            onclick="acceptAssignment({{ current_assignment.id }})"
+        >Accept & Start</button>
     </div>
+    {% else %}
+    <div id="in-progress-map-panel">
+        <div style="font-size: 13px; font-weight: 700; letter-spacing: 0.4px; margin-top: 6px;">JOB LOCATION MAP</div>
+        <div id="job-location-map"></div>
+        <button type="button" class="navigation-btn" onclick="openNavigation()">Start Navigation</button>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Location Sharing Section -->
@@ -471,27 +505,121 @@
     {% endfor %}
 </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function() {
     let locationInterval = null;
     let isLocationSharingActive = false;
     let timerInterval = null;
-    let startTime = null;
     let currentDriverStatus = "{{ driver_status.status }}";
     const updateLocationApiUrl = "{% url 'update_driver_location' %}";
     const updateStatusApiUrl = "{% url 'update_driver_status' %}";
+    const acceptAssignmentApiUrl = "{% url 'accept_driver_assignment' %}";
     const csrfToken = "{{ csrf_token }}";
+    const destinationLat = Number("{{ current_assignment.request.location_latitude|default:'0' }}");
+    const destinationLon = Number("{{ current_assignment.request.location_longitude|default:'0' }}");
+    const assignmentStatus = "{{ current_assignment.request.status|default:'' }}";
+    const offerSentAtIso = "{{ current_assignment.offer_sent_at|date:'c'|default:''|escapejs }}";
+    const driverResponseTimeoutSeconds = Number("{{ driver_response_timeout_seconds|default:60 }}");
+    const autoShareStorageKey = 'driverAutoShareLocation';
+
+    function initJobLocationMap() {
+        const mapContainer = document.getElementById('job-location-map');
+        if (!mapContainer) {
+            return;
+        }
+
+        const lat = destinationLat;
+        const lon = destinationLon;
+        if (!lat && !lon) {
+            return;
+        }
+
+        const map = L.map('job-location-map').setView([lat, lon], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19,
+        }).addTo(map);
+
+        L.marker([lat, lon]).addTo(map)
+            .bindPopup("{{ current_assignment.request.address|escapejs }}")
+            .openPopup();
+    }
+
+    window.openNavigation = function() {
+        if (!destinationLat && !destinationLon) {
+            alert('Destination coordinates are unavailable for this request.');
+            return;
+        }
+
+        const openMapsWithOrigin = (originLat, originLon) => {
+            const url = `https://www.google.com/maps/dir/?api=1&origin=${originLat},${originLon}&destination=${destinationLat},${destinationLon}&travelmode=driving`;
+            window.open(url, '_blank');
+        };
+
+        const openMapsWithoutOrigin = () => {
+            const url = `https://www.google.com/maps/dir/?api=1&destination=${destinationLat},${destinationLon}&travelmode=driving`;
+            window.open(url, '_blank');
+        };
+
+        if (!navigator.geolocation) {
+            openMapsWithoutOrigin();
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => openMapsWithOrigin(position.coords.latitude, position.coords.longitude),
+            () => openMapsWithoutOrigin(),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+        );
+    };
 
     // ============ TIMER ============
-    function startTimer() {
-        startTime = Date.now();
-        
+    function disableDispatchActions() {
+        const acceptButton = document.querySelector('.accept-btn');
+        const declineButton = document.querySelector('.decline-btn');
+        const actions = document.getElementById('dispatch-actions');
+
+        if (acceptButton) {
+            acceptButton.disabled = true;
+            acceptButton.style.opacity = '0.6';
+            acceptButton.textContent = 'Expired';
+        }
+        if (declineButton) {
+            declineButton.disabled = true;
+            declineButton.style.opacity = '0.6';
+        }
+        if (actions) {
+            actions.style.pointerEvents = 'none';
+        }
+    }
+
+    function startOfferCountdown() {
+        const timerElement = document.getElementById('timer');
+        if (!timerElement || assignmentStatus !== 'ASSIGNED' || !offerSentAtIso) {
+            return;
+        }
+
+        const offeredAt = new Date(offerSentAtIso).getTime();
+        if (Number.isNaN(offeredAt)) {
+            timerElement.textContent = '⏱ 1:00';
+            return;
+        }
+
+        const expiryAt = offeredAt + (driverResponseTimeoutSeconds * 1000);
+
         function updateDisplay() {
-            const elapsed = Math.floor((Date.now() - startTime) / 1000);
-            const mins = Math.floor(elapsed / 60);
-            const secs = elapsed % 60;
-            document.getElementById('timer').textContent = 
-                `⏱ ${mins}:${secs.toString().padStart(2, '0')}`;
+            const remainingMs = expiryAt - Date.now();
+            const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+            const mins = Math.floor(remainingSeconds / 60);
+            const secs = remainingSeconds % 60;
+            timerElement.textContent = `⏱ ${mins}:${secs.toString().padStart(2, '0')}`;
+
+            if (remainingMs <= 0) {
+                clearInterval(timerInterval);
+                disableDispatchActions();
+                setTimeout(() => window.location.reload(), 1000);
+            }
         }
 
         updateDisplay();
@@ -499,12 +627,34 @@
     }
 
     // ============ ACCEPT & DECLINE ============
-    window.acceptAssignment = function() {
+    window.acceptAssignment = function(assignmentId) {
         if (!confirm('Accept this dispatch?')) return;
-        startTimer();
-        toggleLocationSharing(); // Auto-enable location sharing
-        alert('✓ Dispatch accepted! Location sharing activated.');
-        // TODO: Add actual API call to update assignment status
+
+        fetch(acceptAssignmentApiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({ assignment_id: assignmentId })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                alert('Failed to start job: ' + (data.error || 'Unknown error'));
+                return;
+            }
+
+            localStorage.setItem(autoShareStorageKey, 'true');
+
+            const finishReload = () => window.location.reload();
+            if (!isLocationSharingActive) {
+                startLocationSharing(true).finally(finishReload);
+            } else {
+                finishReload();
+            }
+        })
+        .catch(() => alert('Failed to start job. Please try again.'));
     };
 
     window.declineAssignment = function() {
@@ -542,6 +692,7 @@
                     btn.textContent = 'Go Online';
                     btn.classList.remove('online');
                     btn.classList.add('offline');
+                    localStorage.removeItem(autoShareStorageKey);
                     stopLocationSharing();
                     alert('✓ You are now offline');
                 }
@@ -584,7 +735,7 @@
         const lat = position.coords.latitude;
         const lon = position.coords.longitude;
 
-        fetch(updateLocationApiUrl, {
+        return fetch(updateLocationApiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -600,8 +751,12 @@
             if (!data.success) {
                 console.error('Failed to update location:', data.error);
             }
+            return data;
         })
-        .catch(error => console.error('Error sending location:', error));
+        .catch(error => {
+            console.error('Error sending location:', error);
+            throw error;
+        });
     }
 
     function handleLocationError(error) {
@@ -624,37 +779,58 @@
         updateLocationUI(false);
     }
 
-    function startLocationSharing() {
-        if (!navigator.geolocation) {
-            alert('Geolocation is not supported by your browser.');
-            return;
-        }
-
-        isLocationSharingActive = true;
-        
-        // Get location immediately
-        navigator.geolocation.getCurrentPosition(sendLocation, handleLocationError, {
-            enableHighAccuracy: true,
-            timeout: 5000,
-            maximumAge: 0
-        });
-
-        // Send location every 10 seconds
-        locationInterval = setInterval(() => {
-            if (isLocationSharingActive) {
-                navigator.geolocation.getCurrentPosition(sendLocation, handleLocationError, {
+    function requestAndSendCurrentLocation() {
+        return new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    sendLocation(position).then(resolve).catch(reject);
+                },
+                (error) => {
+                    handleLocationError(error);
+                    reject(error);
+                },
+                {
                     enableHighAccuracy: true,
                     timeout: 5000,
                     maximumAge: 0
-                });
-            }
-        }, 10000);
-
-        updateLocationUI(true);
+                }
+            );
+        });
     }
 
-    function stopLocationSharing() {
+    function startLocationSharing(skipAlertOnFailure = false) {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            return Promise.reject(new Error('Geolocation not supported'));
+        }
+
+        isLocationSharingActive = true;
+        localStorage.setItem(autoShareStorageKey, 'true');
+        updateLocationUI(true);
+        
+        return requestAndSendCurrentLocation()
+            .catch((error) => {
+                if (!skipAlertOnFailure) {
+                    throw error;
+                }
+            })
+            .finally(() => {
+                if (locationInterval) {
+                    clearInterval(locationInterval);
+                }
+                locationInterval = setInterval(() => {
+                    if (isLocationSharingActive) {
+                        requestAndSendCurrentLocation().catch(() => {});
+                    }
+                }, 10000);
+            });
+    }
+
+    function stopLocationSharing(preserveAutoShare = false) {
         isLocationSharingActive = false;
+        if (!preserveAutoShare) {
+            localStorage.removeItem(autoShareStorageKey);
+        }
         if (locationInterval) {
             clearInterval(locationInterval);
         }
@@ -665,12 +841,20 @@
         if (isLocationSharingActive) {
             stopLocationSharing();
         } else {
-            startLocationSharing();
+            startLocationSharing().catch(() => {});
         }
     };
 
     // Stop sharing when leaving page
-    window.addEventListener('beforeunload', stopLocationSharing);
+    window.addEventListener('beforeunload', function() {
+        stopLocationSharing(true);
+    });
+    startOfferCountdown();
+    initJobLocationMap();
+
+    if (assignmentStatus === 'IN-PROGRESS' && localStorage.getItem(autoShareStorageKey) === 'true') {
+        startLocationSharing(true).catch(() => {});
+    }
 })();
 </script>
 {% endblock %}

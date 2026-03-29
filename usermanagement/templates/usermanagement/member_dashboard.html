@@ -246,6 +246,48 @@ main {
     font-size: 0.82rem;
 }
 
+.driver-track-card {
+    margin-top: 14px;
+    border: 1px solid #dbe6fb;
+    border-radius: 12px;
+    padding: 14px;
+    background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+}
+
+.driver-track-grid {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.call-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 9px 14px;
+    border-radius: 999px;
+    background: #2f6feb;
+    color: #fff;
+    text-decoration: none;
+    font-size: 0.84rem;
+    font-weight: 800;
+}
+
+.call-btn:hover {
+    color: #fff;
+    background: #255cd3;
+}
+
+.member-live-map {
+    margin-top: 12px;
+    height: 220px;
+    border-radius: 12px;
+    border: 1px solid #d3ddf2;
+    overflow: hidden;
+}
+
 @media (max-width: 768px) {
     main {
         padding: 14px !important;
@@ -279,6 +321,7 @@ main {
 {% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
 <div class="member-shell">
     <div class="member-card">
 
@@ -379,6 +422,31 @@ main {
                 </div>
 
                 <p class="driver-sub" style="margin-top: 10px;">Status: {{ recovery_request.get_status_display }}{% if recovery_request.place %} · {{ recovery_request.get_place_display }}{% endif %}</p>
+
+                {% if recovery_request.current_assignment %}
+                <div class="driver-track-card">
+                    <div class="driver-track-grid">
+                        <div>
+                            <div class="driver-name">Assigned Driver: {{ recovery_request.current_assignment.driver.user.username }}</div>
+                            <p class="driver-sub">{{ recovery_request.current_assignment.driver.vehicle_registration }} · {{ recovery_request.current_assignment.driver.vehicle_type }}</p>
+                            {% if recovery_request.current_assignment.driver.user.profile.phone %}
+                            <p class="driver-sub">Call: {{ recovery_request.current_assignment.driver.user.profile.phone }}</p>
+                            {% else %}
+                            <p class="driver-sub">Phone number not available yet.</p>
+                            {% endif %}
+                        </div>
+                        {% if recovery_request.current_assignment.driver.user.profile.phone %}
+                        <a class="call-btn" href="tel:{{ recovery_request.current_assignment.driver.user.profile.phone|cut:' ' }}">Call Driver</a>
+                        {% endif %}
+                    </div>
+                    <div
+                        id="member-live-map-{{ recovery_request.id }}"
+                        class="member-live-map"
+                        data-endpoint="{% url 'member_request_driver_location' recovery_request.id %}"
+                    ></div>
+                    <p class="driver-sub" id="driver-location-label-{{ recovery_request.id }}" style="margin-top: 10px;">Loading driver live location...</p>
+                </div>
+                {% endif %}
             </div>
             {% endfor %}
         </section>
@@ -390,6 +458,7 @@ main {
         <span>&copy; 2026 Quick Assist Northwest</span>
     </div>
 </div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 const issueButtons = document.querySelectorAll('.issue-pill');
 const selectedServiceInput = document.getElementById('selected-service-id');
@@ -453,5 +522,74 @@ function loadCurrentLocation() {
 
 loadCurrentLocation();
 refreshLocationBtn.addEventListener('click', loadCurrentLocation);
+
+const memberLiveMaps = {};
+
+function initOrUpdateMemberMap(container, data) {
+    const requestId = container.id.replace('member-live-map-', '');
+    const label = document.getElementById(`driver-location-label-${requestId}`);
+
+    if (!data.available || data.driver_latitude === null || data.driver_longitude === null) {
+        if (label) {
+            label.textContent = 'Driver accepted the request. Waiting for live location update...';
+        }
+        return;
+    }
+
+    const driverLatLng = [data.driver_latitude, data.driver_longitude];
+    const requestLatLng = [data.request_latitude, data.request_longitude];
+    let mapState = memberLiveMaps[requestId];
+
+    if (!mapState) {
+        const map = L.map(container.id).setView(driverLatLng, 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19,
+        }).addTo(map);
+
+        const driverMarker = L.marker(driverLatLng).addTo(map).bindPopup(`${data.driver_name} live location`);
+        const requestMarker = L.marker(requestLatLng).addTo(map).bindPopup(data.request_address);
+        const route = L.polyline([driverLatLng, requestLatLng], {
+            color: '#2f6feb',
+            weight: 4,
+            opacity: 0.7,
+            dashArray: '8 8',
+        }).addTo(map);
+
+        map.fitBounds(route.getBounds(), { padding: [24, 24] });
+        mapState = memberLiveMaps[requestId] = { map, driverMarker, requestMarker, route };
+    } else {
+        mapState.driverMarker.setLatLng(driverLatLng);
+        mapState.requestMarker.setLatLng(requestLatLng);
+        mapState.route.setLatLngs([driverLatLng, requestLatLng]);
+    }
+
+    if (label) {
+        label.textContent = `Driver ${data.driver_name} is live. Last update: ${new Date(data.updated_at).toLocaleTimeString()}`;
+    }
+}
+
+function refreshMemberDriverLocations() {
+    document.querySelectorAll('.member-live-map').forEach((container) => {
+        const endpoint = container.dataset.endpoint;
+        if (!endpoint) {
+            return;
+        }
+
+        fetch(endpoint)
+            .then((response) => response.json())
+            .then((data) => initOrUpdateMemberMap(container, data))
+            .catch(() => {
+                const requestId = container.id.replace('member-live-map-', '');
+                const label = document.getElementById(`driver-location-label-${requestId}`);
+                if (label) {
+                    label.textContent = 'Unable to load live driver location right now.';
+                }
+            });
+    });
+}
+
+refreshMemberDriverLocations();
+setInterval(refreshMemberDriverLocations, 10000);
 </script>
 {% endblock %}

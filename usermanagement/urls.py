@@ -1,6 +1,6 @@
 from django.urls import path
 from django.contrib import admin
-from usermanagement.views import admin_handle_request, admin_users, assign_recovery_request, decline_recovery_request, driver_requests, login_view, members, register_view, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services, submit_request, lookup_vehicle, cancel_request, get_driver_locations, update_driver_location, update_driver_status
+from usermanagement.views import admin_handle_request, admin_users, assign_recovery_request, decline_recovery_request, driver_requests, login_view, members, register_view, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services, submit_request, lookup_vehicle, cancel_request, get_driver_locations, update_driver_location, update_driver_status, accept_driver_assignment, member_request_driver_location
 
 urlpatterns = [
     path('register/', register_view, name='register'),
@@ -27,6 +27,8 @@ urlpatterns = [
     path('cancel-request/<int:request_id>/', cancel_request, name='cancel_request'),
     path('lookup-vehicle/', lookup_vehicle, name='lookup_vehicle'),
     path('api/driver-locations/', get_driver_locations, name='get_driver_locations'),
+    path('api/member-request-driver-location/<int:request_id>/', member_request_driver_location, name='member_request_driver_location'),
     path('api/update-location/', update_driver_location, name='update_driver_location'),
     path('api/update-driver-status/', update_driver_status, name='update_driver_status'),
+    path('api/accept-driver-assignment/', accept_driver_assignment, name='accept_driver_assignment'),
 ]

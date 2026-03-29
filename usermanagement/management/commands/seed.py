@@ -70,6 +70,17 @@ class Command(BaseCommand):
             driver_user.save()
             self.stdout.write('- created driver1')
 
+        UserProfile.objects.get_or_create(
+            user=driver_user,
+            defaults={
+                'first_name': 'Driver',
+                'last_name': 'One',
+                'phone': '0800000002',
+                'address': '456 Driver Rd',
+                'membership_tier': 'STANDARD',
+            },
+        )
+
         DriverStatus.objects.get_or_create(
             user=driver_user,
             defaults={

@@ -1,4 +1,6 @@
 import requests as http_requests
+from math import atan2, cos, radians, sin, sqrt
+from datetime import timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
@@ -17,6 +19,125 @@ from usermanagement.models import DriverLocation, DriverStatus, User, UserProfil
 
 
 # Create your views here.
+def _haversine_km(lat1, lon1, lat2, lon2):
+    """Return great-circle distance in kilometers between two coordinates."""
+    earth_radius_km = 6371.0
+    d_lat = radians(lat2 - lat1)
+    d_lon = radians(lon2 - lon1)
+    a = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lon / 2) ** 2
+    return 2 * earth_radius_km * atan2(sqrt(a), sqrt(1 - a))
+
+
+def _supports_service(driver_status, service):
+    """Check if driver's specialization includes the requested service id or name."""
+    specs = driver_status.specialization or []
+    if not isinstance(specs, list):
+        return False
+
+    service_id_str = str(service.id)
+    service_name = (service.name or '').strip().lower()
+    for item in specs:
+        value = str(item).strip().lower()
+        if value == service_id_str or value == service_name:
+            return True
+    return False
+
+
+DISPATCH_BATCH_SIZE = 3
+DRIVER_RESPONSE_TIMEOUT_SECONDS = 60
+
+
+def _rank_optimal_drivers(recovery_request, excluded_driver_ids=None):
+    """Return available service-capable drivers ranked by distance."""
+    excluded_driver_ids = excluded_driver_ids or set()
+    req_lat = float(recovery_request.location_latitude)
+    req_lon = float(recovery_request.location_longitude)
+
+    candidate_drivers = DriverStatus.objects.select_related('user').filter(
+        status=DriverStatus.Status.AVAILABLE,
+        user__active=True,
+        user__status='APPROVED',
+        user__deleted_at__isnull=True,
+    )
+
+    ranked = []
+    for driver in candidate_drivers:
+        if driver.id in excluded_driver_ids:
+            continue
+        if not _supports_service(driver, recovery_request.service):
+            continue
+
+        current_location = driver.user.usermanagement_locations.filter(is_current=True).order_by('-updated_at').first()
+        if not current_location:
+            continue
+
+        distance_km = _haversine_km(
+            req_lat,
+            req_lon,
+            float(current_location.latitude),
+            float(current_location.longitude),
+        )
+        ranked.append((distance_km, driver))
+
+    ranked.sort(key=lambda item: item[0])
+    return ranked
+
+
+def _dispatch_to_next_optimal_drivers(recovery_request):
+    """Send the request to the next nearest batch of available drivers."""
+    already_offered_ids = set(
+        Assignment.objects.filter(request=recovery_request).values_list('driver_id', flat=True)
+    )
+    ranked = _rank_optimal_drivers(recovery_request, excluded_driver_ids=already_offered_ids)
+    selected = ranked[:DISPATCH_BATCH_SIZE]
+    if not selected:
+        recovery_request.status = 'PENDING'
+        recovery_request.save(update_fields=['status', 'updated_at'])
+        return 0
+
+    now = timezone.now()
+    for _, driver in selected:
+        Assignment.objects.create(
+            request=recovery_request,
+            driver=driver,
+            offer_sent_at=now,
+            # Using TIMEOUT enum as "offer sent / pending response" placeholder.
+            driver_response=Assignment.DriverResponse.TIMEOUT,
+        )
+
+    recovery_request.status = 'ASSIGNED'
+    recovery_request.save(update_fields=['status', 'updated_at'])
+    return len(selected)
+
+
+def _rotate_expired_dispatch_offers(recovery_request):
+    """If current offer window expired, timeout and dispatch to next nearest drivers."""
+    if recovery_request.status != 'ASSIGNED':
+        return 0
+
+    pending_offers = recovery_request.assignments.filter(
+        accepted_at__isnull=True,
+        driver_responded_at__isnull=True,
+    ).order_by('offer_sent_at')
+
+    if not pending_offers.exists():
+        return _dispatch_to_next_optimal_drivers(recovery_request)
+
+    oldest_offer = pending_offers.first()
+    expires_at = oldest_offer.offer_sent_at + timedelta(seconds=DRIVER_RESPONSE_TIMEOUT_SECONDS)
+    if timezone.now() < expires_at:
+        return 0
+
+    now = timezone.now()
+    pending_offers.update(
+        driver_response=Assignment.DriverResponse.TIMEOUT,
+        driver_responded_at=now,
+        cancellation_reason='Offer expired after 60 seconds',
+        updated_at=now,
+    )
+    return _dispatch_to_next_optimal_drivers(recovery_request)
+
+
 def register_view(request):
     if request.method == 'POST':
         form = RegistrationForm(request.POST)
@@ -131,9 +252,13 @@ def login_view(request):
 
 @login_required
 def dashboard(request):
+    # Opportunistic scheduler: rotate expired offers whenever dashboard loads.
+    for pending_request in RecoveryRequest.objects.select_related('service').filter(status='ASSIGNED'):
+        _rotate_expired_dispatch_offers(pending_request)
+
     if request.user.role == 'ADMIN':
         active_jobs = RecoveryRequest.objects.filter(
-            status__in=['PENDING', 'IN_PROGRESS', 'ASSIGNED']
+            status__in=['PENDING', 'IN-PROGRESS', 'ASSIGNED']
         ).count()
         online_drivers = DriverStatus.objects.filter(status='AVAILABLE', user__active=True, user__status='APPROVED', user__deleted_at__isnull=True,).count()
         drivers = DriverStatus.objects.select_related('user', 'user__profile').all()
@@ -148,14 +273,38 @@ def dashboard(request):
         })
     elif request.user.role == 'DRIVER':
         driver_status = DriverStatus.objects.select_related('user').get(user=request.user)
-        # Get current assignment if any
-        current_assignment = Assignment.objects.filter(
+        # Rotate expired offers so driver sees the latest valid dispatches.
+        candidate_request_ids = Assignment.objects.filter(
             driver=driver_status,
-            driver_response=Assignment.DriverResponse.ACCEPTED
+            request__status='ASSIGNED',
+            accepted_at__isnull=True,
+        ).values_list('request_id', flat=True)
+        for request_id in set(candidate_request_ids):
+            req = RecoveryRequest.objects.select_related('service').filter(id=request_id).first()
+            if req:
+                _rotate_expired_dispatch_offers(req)
+
+        # Show accepted assignment first; fallback to current open offer.
+        accepted_assignment = Assignment.objects.filter(
+            driver=driver_status,
+            request__status__in=['ASSIGNED', 'IN-PROGRESS'],
+            driver_response=Assignment.DriverResponse.ACCEPTED,
+        ).select_related(
+            'request__member',
+            'request__service'
+        ).order_by('-accepted_at', '-driver_responded_at', '-created_at').first()
+
+        offered_assignment = Assignment.objects.filter(
+            driver=driver_status,
+            request__status='ASSIGNED',
+            accepted_at__isnull=True,
+            driver_responded_at__isnull=True,
         ).select_related(
             'request__member',
             'request__service'
         ).order_by('-created_at').first()
+
+        current_assignment = accepted_assignment or offered_assignment
 
         # Get past job history
         past_jobs = JobHistory.objects.filter(
@@ -169,14 +318,22 @@ def dashboard(request):
             'driver_status': driver_status,
             'current_assignment': current_assignment,
             'past_jobs': past_jobs,
+            'driver_response_timeout_seconds': DRIVER_RESPONSE_TIMEOUT_SECONDS,
         })
     else:
         services = Service.objects.filter(active=True).order_by('id')
         today_requests = RecoveryRequest.objects.filter(
             member=request.user,
             created_at__date=timezone.localdate(),
-            status__in=['PENDING', 'IN_PROGRESS', 'ASSIGNED']
-        ).select_related('service').order_by('-created_at')
+            status__in=['PENDING', 'IN-PROGRESS', 'ASSIGNED']
+        ).select_related('service').prefetch_related('assignments__driver__user__profile').order_by('-created_at')
+
+        today_requests = list(today_requests)
+        for recovery_request in today_requests:
+            recovery_request.current_assignment = recovery_request.assignments.filter(
+                driver_response=Assignment.DriverResponse.ACCEPTED,
+            ).select_related('driver__user', 'driver__user__profile').order_by('-accepted_at', '-created_at').first()
+
         return render(request, 'usermanagement/member_dashboard.html',
                       {
                           'services': services,
@@ -226,7 +383,7 @@ def admin_dashboard(request):
         "total_drivers": drivers.count(),
         "total_requests": requests.count(),
         "total_services": services.count(),
-        "active_requests": requests.filter(status__in=["PENDING", "IN_PROGRESS", "ASSIGNED"]).count(),
+        "active_requests": requests.filter(status__in=["PENDING", "IN-PROGRESS", "ASSIGNED"]).count(),
         "new_requests": new_requests,
         "new_request_count": pending_qs.count(),
         "users": users,
@@ -272,10 +429,14 @@ def admin_create_driver(request):
         license_number = request.POST.get("license_number")
         vehicle_type = request.POST.get("vehicle_type")
         vehicle_registration = request.POST.get("vehicle_registration")
+        first_name = request.POST.get("first_name", "")
+        last_name = request.POST.get("last_name", "")
+        phone = request.POST.get("phone") or "0000000000"
         if User.objects.filter(username=username).exists():
             messages.error(request, f"Username '{username}' already exists.")
             return redirect("admin_dashboard")
         user = User.objects.create_user(username=username, email=email, password=password, role=User.Role.DRIVER)
+        UserProfile.objects.create(user=user, first_name=first_name, last_name=last_name, phone=phone)
         DriverStatus.objects.create(user=user, license_number=license_number, vehicle_type=vehicle_type, vehicle_registration=vehicle_registration, qualification=[], specialization=[])
         messages.success(request, f"Driver '{username}' created successfully.")
     return redirect("admin_dashboard")
@@ -385,6 +546,44 @@ def get_driver_locations(request):
 
 
 @login_required
+def member_request_driver_location(request, request_id):
+    """Return accepted driver details and live location for a member request."""
+    if request.user.role != 'MEMBER':
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+    recovery_request = get_object_or_404(
+        RecoveryRequest.objects.prefetch_related('assignments__driver__user__profile'),
+        id=request_id,
+        member=request.user,
+    )
+    assignment = recovery_request.assignments.filter(
+        driver_response=Assignment.DriverResponse.ACCEPTED,
+    ).select_related('driver__user', 'driver__user__profile').order_by('-accepted_at', '-created_at').first()
+
+    if not assignment:
+        return JsonResponse({'available': False})
+
+    driver_user = assignment.driver.user
+    profile = getattr(driver_user, 'profile', None)
+    current_location = driver_user.usermanagement_locations.filter(is_current=True).order_by('-updated_at').first()
+
+    return JsonResponse({
+        'available': bool(current_location),
+        'driver_name': driver_user.username,
+        'phone': getattr(profile, 'phone', '') if profile else '',
+        'vehicle_registration': assignment.driver.vehicle_registration,
+        'vehicle_type': assignment.driver.vehicle_type,
+        'request_status': recovery_request.status,
+        'request_latitude': float(recovery_request.location_latitude),
+        'request_longitude': float(recovery_request.location_longitude),
+        'request_address': recovery_request.address,
+        'driver_latitude': float(current_location.latitude) if current_location else None,
+        'driver_longitude': float(current_location.longitude) if current_location else None,
+        'updated_at': current_location.updated_at.isoformat() if current_location else None,
+    })
+
+
+@login_required
 @require_POST
 def update_driver_location(request):
     """API endpoint for drivers to update their location."""
@@ -444,6 +643,69 @@ def update_driver_status(request):
         })
     except DriverStatus.DoesNotExist:
         return JsonResponse({'error': 'Driver status not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def accept_driver_assignment(request):
+    """Move assigned request into in-progress state when driver starts the job."""
+    if request.user.role != 'DRIVER':
+        return JsonResponse({'error': 'Only drivers can accept assignments'}, status=403)
+
+    try:
+        import json
+        data = json.loads(request.body)
+        assignment_id = data.get('assignment_id')
+
+        if not assignment_id:
+            return JsonResponse({'error': 'Assignment ID required'}, status=400)
+
+        driver_status = DriverStatus.objects.get(user=request.user)
+        assignment = Assignment.objects.select_related('request').get(id=assignment_id, driver=driver_status)
+
+        if assignment.request.status != 'ASSIGNED':
+            return JsonResponse({'error': 'This request is no longer available.'}, status=409)
+
+        expiry_time = assignment.offer_sent_at + timedelta(seconds=DRIVER_RESPONSE_TIMEOUT_SECONDS)
+        if timezone.now() > expiry_time:
+            now = timezone.now()
+            assignment.driver_response = Assignment.DriverResponse.TIMEOUT
+            assignment.driver_responded_at = now
+            assignment.cancellation_reason = 'Offer expired after 60 seconds'
+            assignment.save(update_fields=['driver_response', 'driver_responded_at', 'cancellation_reason', 'updated_at'])
+
+            _rotate_expired_dispatch_offers(assignment.request)
+            return JsonResponse({'error': 'Offer expired. Request was forwarded to next available drivers.'}, status=409)
+
+        assignment.driver_response = Assignment.DriverResponse.ACCEPTED
+        assignment.driver_responded_at = assignment.driver_responded_at or timezone.now()
+        assignment.accepted_at = assignment.accepted_at or timezone.now()
+        assignment.save(update_fields=['driver_response', 'driver_responded_at', 'accepted_at', 'updated_at'])
+
+        assignment.request.status = 'IN-PROGRESS'
+        assignment.request.save(update_fields=['status', 'updated_at'])
+
+        # Close the same request offers sent to other drivers.
+        Assignment.objects.filter(request=assignment.request).exclude(id=assignment.id).filter(
+            driver_responded_at__isnull=True,
+            accepted_at__isnull=True,
+        ).update(
+            driver_response=Assignment.DriverResponse.DECLINED,
+            driver_responded_at=timezone.now(),
+            cancellation_reason='Taken by another driver',
+            updated_at=timezone.now(),
+        )
+
+        driver_status.status = DriverStatus.Status.ON_TRIP
+        driver_status.save(update_fields=['status', 'updated_at'])
+
+        return JsonResponse({'success': True, 'status': assignment.request.status})
+    except DriverStatus.DoesNotExist:
+        return JsonResponse({'error': 'Driver status not found'}, status=404)
+    except Assignment.DoesNotExist:
+        return JsonResponse({'error': 'Assignment not found'}, status=404)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
 
@@ -730,7 +992,19 @@ def submit_request(request):
                 place=place,
             )
 
-            messages.success(request, 'Recovery request submitted successfully!')
+            selected_count = _dispatch_to_next_optimal_drivers(recovery_request)
+
+            if selected_count:
+                messages.success(
+                    request,
+                    f'Recovery request submitted. Sent to {selected_count} optimal driver(s). Drivers must accept within 60 seconds.'
+                )
+            else:
+                messages.success(
+                    request,
+                    'Recovery request submitted. No matching nearby driver is available right now.'
+                )
+
             return redirect('dashboard')
         except Exception as e:
             return render_form(f'Could not save your request: {e}')
