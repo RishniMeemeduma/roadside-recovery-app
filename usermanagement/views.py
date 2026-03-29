@@ -1,6 +1,7 @@
 import requests as http_requests
 from math import atan2, cos, radians, sin, sqrt
 from datetime import timedelta
+from django.db.models import Max
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
@@ -136,6 +137,70 @@ def _rotate_expired_dispatch_offers(recovery_request):
         updated_at=now,
     )
     return _dispatch_to_next_optimal_drivers(recovery_request)
+
+
+def _get_driver_assignment_for_action(driver_status, assignment_id):
+    if not assignment_id:
+        raise ValueError('Assignment ID required')
+
+    return Assignment.objects.select_related('request').get(
+        id=assignment_id,
+        driver=driver_status,
+    )
+
+
+def _get_current_driver_assignment(driver_status):
+    """Return current assignment shown on driver dashboard."""
+    accepted_assignment = Assignment.objects.filter(
+        driver=driver_status,
+        request__status__in=['ASSIGNED', 'IN-PROGRESS'],
+        driver_response=Assignment.DriverResponse.ACCEPTED,
+    ).select_related(
+        'request__member',
+        'request__service'
+    ).order_by('-accepted_at', '-driver_responded_at', '-created_at').first()
+
+    if accepted_assignment:
+        return accepted_assignment
+
+    return Assignment.objects.filter(
+        driver=driver_status,
+        request__status='ASSIGNED',
+        accepted_at__isnull=True,
+        driver_responded_at__isnull=True,
+    ).select_related(
+        'request__member',
+        'request__service'
+    ).order_by('-created_at').first()
+
+
+def _get_driver_feed_snapshot(driver_status):
+    """Return driver-visible dispatch feed state and a version token."""
+    current_assignment = _get_current_driver_assignment(driver_status)
+
+    relevant_assignments = Assignment.objects.filter(
+        driver=driver_status,
+        request__status__in=['ASSIGNED', 'IN-PROGRESS'],
+    )
+
+    assignment_ids = list(
+        relevant_assignments.order_by('id').values_list('id', flat=True)
+    )
+    assignment_max_updated = relevant_assignments.aggregate(max_updated=Max('updated_at'))['max_updated']
+    request_max_updated = relevant_assignments.aggregate(max_updated=Max('request__updated_at'))['max_updated']
+
+    current_id = current_assignment.id if current_assignment else 0
+    current_status = current_assignment.request.status if current_assignment else ''
+    assignment_updated_str = assignment_max_updated.isoformat() if assignment_max_updated else ''
+    request_updated_str = request_max_updated.isoformat() if request_max_updated else ''
+    id_list_str = ','.join(str(aid) for aid in assignment_ids)
+
+    feed_version = f"{current_id}|{current_status}|{assignment_updated_str}|{request_updated_str}|{id_list_str}"
+    return {
+        'current_assignment': current_assignment,
+        'assignment_ids': assignment_ids,
+        'feed_version': feed_version,
+    }
 
 
 def register_view(request):
@@ -284,27 +349,8 @@ def dashboard(request):
             if req:
                 _rotate_expired_dispatch_offers(req)
 
-        # Show accepted assignment first; fallback to current open offer.
-        accepted_assignment = Assignment.objects.filter(
-            driver=driver_status,
-            request__status__in=['ASSIGNED', 'IN-PROGRESS'],
-            driver_response=Assignment.DriverResponse.ACCEPTED,
-        ).select_related(
-            'request__member',
-            'request__service'
-        ).order_by('-accepted_at', '-driver_responded_at', '-created_at').first()
-
-        offered_assignment = Assignment.objects.filter(
-            driver=driver_status,
-            request__status='ASSIGNED',
-            accepted_at__isnull=True,
-            driver_responded_at__isnull=True,
-        ).select_related(
-            'request__member',
-            'request__service'
-        ).order_by('-created_at').first()
-
-        current_assignment = accepted_assignment or offered_assignment
+        driver_feed_snapshot = _get_driver_feed_snapshot(driver_status)
+        current_assignment = driver_feed_snapshot['current_assignment']
 
         # Get past job history
         past_jobs = JobHistory.objects.filter(
@@ -319,6 +365,7 @@ def dashboard(request):
             'current_assignment': current_assignment,
             'past_jobs': past_jobs,
             'driver_response_timeout_seconds': DRIVER_RESPONSE_TIMEOUT_SECONDS,
+            'driver_feed_version': driver_feed_snapshot['feed_version'],
         })
     else:
         services = Service.objects.filter(active=True).order_by('id')
@@ -339,6 +386,37 @@ def dashboard(request):
                           'services': services,
                           'today_requests': today_requests,
                       })
+
+
+@login_required
+def driver_assignment_snapshot(request):
+    """Return current assignment metadata so drivers can auto-refresh when dispatch changes."""
+    if request.user.role != 'DRIVER':
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+    driver_status = get_object_or_404(DriverStatus.objects.select_related('user'), user=request.user)
+    driver_feed_snapshot = _get_driver_feed_snapshot(driver_status)
+    current_assignment = driver_feed_snapshot['current_assignment']
+
+    if not current_assignment:
+        return JsonResponse({
+            'has_assignment': False,
+            'driver_status': driver_status.status,
+            'feed_version': driver_feed_snapshot['feed_version'],
+            'assignment_count': len(driver_feed_snapshot['assignment_ids']),
+        })
+
+    return JsonResponse({
+        'has_assignment': True,
+        'driver_status': driver_status.status,
+        'assignment_id': current_assignment.id,
+        'request_id': current_assignment.request_id,
+        'request_status': current_assignment.request.status,
+        'feed_version': driver_feed_snapshot['feed_version'],
+        'assignment_count': len(driver_feed_snapshot['assignment_ids']),
+        'offer_sent_at': current_assignment.offer_sent_at.isoformat() if current_assignment.offer_sent_at else None,
+        'updated_at': current_assignment.updated_at.isoformat(),
+    })
 
 
 @login_required
@@ -546,6 +624,21 @@ def get_driver_locations(request):
 
 
 @login_required
+def member_requests_status(request):
+    """Return current statuses for all of the member's today requests (used for live polling)."""
+    if request.user.role != 'MEMBER':
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+    requests_qs = RecoveryRequest.objects.filter(
+        member=request.user,
+        created_at__date=timezone.localdate(),
+    ).values('id', 'status')
+
+    statuses = {str(row['id']): row['status'] for row in requests_qs}
+    return JsonResponse({'statuses': statuses})
+
+
+@login_required
 def member_request_driver_location(request, request_id):
     """Return accepted driver details and live location for a member request."""
     if request.user.role != 'MEMBER':
@@ -561,7 +654,7 @@ def member_request_driver_location(request, request_id):
     ).select_related('driver__user', 'driver__user__profile').order_by('-accepted_at', '-created_at').first()
 
     if not assignment:
-        return JsonResponse({'available': False})
+        return JsonResponse({'available': False, 'request_status': recovery_request.status})
 
     driver_user = assignment.driver.user
     profile = getattr(driver_user, 'profile', None)
@@ -634,6 +727,14 @@ def update_driver_status(request):
             return JsonResponse({'error': 'Invalid status'}, status=400)
 
         driver_status = DriverStatus.objects.get(user=request.user)
+        active_job_exists = Assignment.objects.filter(
+            driver=driver_status,
+            driver_response=Assignment.DriverResponse.ACCEPTED,
+            request__status__in=['ASSIGNED', 'IN-PROGRESS'],
+        ).exists()
+        if active_job_exists:
+            return JsonResponse({'error': 'Complete or cancel your active job before changing availability.'}, status=409)
+
         driver_status.status = status
         driver_status.save(update_fields=['status', 'updated_at'])
 
@@ -659,11 +760,8 @@ def accept_driver_assignment(request):
         data = json.loads(request.body)
         assignment_id = data.get('assignment_id')
 
-        if not assignment_id:
-            return JsonResponse({'error': 'Assignment ID required'}, status=400)
-
         driver_status = DriverStatus.objects.get(user=request.user)
-        assignment = Assignment.objects.select_related('request').get(id=assignment_id, driver=driver_status)
+        assignment = _get_driver_assignment_for_action(driver_status, assignment_id)
 
         if assignment.request.status != 'ASSIGNED':
             return JsonResponse({'error': 'This request is no longer available.'}, status=409)
@@ -698,7 +796,7 @@ def accept_driver_assignment(request):
             updated_at=timezone.now(),
         )
 
-        driver_status.status = DriverStatus.Status.ON_TRIP
+        driver_status.status = DriverStatus.Status.IN_PROGRESS
         driver_status.save(update_fields=['status', 'updated_at'])
 
         return JsonResponse({'success': True, 'status': assignment.request.status})
@@ -706,6 +804,154 @@ def accept_driver_assignment(request):
         return JsonResponse({'error': 'Driver status not found'}, status=404)
     except Assignment.DoesNotExist:
         return JsonResponse({'error': 'Assignment not found'}, status=404)
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def complete_driver_assignment(request):
+    if request.user.role != 'DRIVER':
+        return JsonResponse({'error': 'Only drivers can complete jobs'}, status=403)
+
+    try:
+        import json
+        data = json.loads(request.body)
+        assignment_id = data.get('assignment_id')
+        notes = (data.get('notes') or '').strip()
+
+        driver_status = DriverStatus.objects.get(user=request.user)
+        assignment = _get_driver_assignment_for_action(driver_status, assignment_id)
+
+        if assignment.request.status != 'IN-PROGRESS':
+            return JsonResponse({'error': 'Only in-progress jobs can be completed.'}, status=409)
+
+        now = timezone.now()
+        start_time = assignment.accepted_at or assignment.driver_responded_at or assignment.offer_sent_at
+        completion_minutes = max(0, int((now - start_time).total_seconds() // 60))
+
+        assignment.completed_at = now
+        assignment.save(update_fields=['completed_at', 'updated_at'])
+
+        assignment.request.status = 'COMPLETED'
+        assignment.request.save(update_fields=['status', 'updated_at'])
+
+        driver_status.status = DriverStatus.Status.AVAILABLE
+        driver_status.save(update_fields=['status', 'updated_at'])
+
+        JobHistory.objects.update_or_create(
+            request=assignment.request,
+            defaults={
+                'driver': driver_status,
+                'assignment': assignment,
+                'start_time': start_time,
+                'end_time': now,
+                'completion_time_minutes': completion_minutes,
+                'driver_notes': notes or None,
+            },
+        )
+
+        return JsonResponse({'success': True, 'status': assignment.request.status})
+    except DriverStatus.DoesNotExist:
+        return JsonResponse({'error': 'Driver status not found'}, status=404)
+    except Assignment.DoesNotExist:
+        return JsonResponse({'error': 'Assignment not found'}, status=404)
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def cancel_driver_assignment(request):
+    if request.user.role != 'DRIVER':
+        return JsonResponse({'error': 'Only drivers can cancel jobs'}, status=403)
+
+    try:
+        import json
+        data = json.loads(request.body)
+        assignment_id = data.get('assignment_id')
+        reason = (data.get('reason') or '').strip() or 'Cancelled by driver'
+
+        driver_status = DriverStatus.objects.get(user=request.user)
+        assignment = _get_driver_assignment_for_action(driver_status, assignment_id)
+
+        if assignment.request.status != 'IN-PROGRESS':
+            return JsonResponse({'error': 'Only in-progress jobs can be cancelled.'}, status=409)
+
+        now = timezone.now()
+        assignment.cancellation_reason = reason
+        assignment.save(update_fields=['cancellation_reason', 'updated_at'])
+
+        Assignment.objects.filter(request=assignment.request).exclude(id=assignment.id).filter(
+            driver_responded_at__isnull=True,
+            accepted_at__isnull=True,
+        ).update(
+            driver_response=Assignment.DriverResponse.DECLINED,
+            driver_responded_at=now,
+            cancellation_reason='Request cancelled by active driver',
+            updated_at=now,
+        )
+
+        assignment.request.status = 'CANCELLED'
+        assignment.request.save(update_fields=['status', 'updated_at'])
+
+        driver_status.status = DriverStatus.Status.AVAILABLE
+        driver_status.save(update_fields=['status', 'updated_at'])
+
+        return JsonResponse({'success': True, 'status': assignment.request.status})
+    except DriverStatus.DoesNotExist:
+        return JsonResponse({'error': 'Driver status not found'}, status=404)
+    except Assignment.DoesNotExist:
+        return JsonResponse({'error': 'Assignment not found'}, status=404)
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def request_driver_assistance(request):
+    if request.user.role != 'DRIVER':
+        return JsonResponse({'error': 'Only drivers can request assistance'}, status=403)
+
+    try:
+        import json
+        data = json.loads(request.body)
+        assignment_id = data.get('assignment_id')
+        notes = (data.get('notes') or '').strip() or 'Driver requested assistance.'
+
+        driver_status = DriverStatus.objects.get(user=request.user)
+        assignment = _get_driver_assignment_for_action(driver_status, assignment_id)
+
+        if assignment.request.status != 'IN-PROGRESS':
+            return JsonResponse({'error': 'Assistance can only be requested for in-progress jobs.'}, status=409)
+
+        now = timezone.now()
+        assignment.assistance_requested_at = now
+        assignment.assistance_notes = notes
+        assignment.save(update_fields=['assistance_requested_at', 'assistance_notes', 'updated_at'])
+
+        if assignment.request.priority != 'EMERGENCY':
+            assignment.request.priority = 'EMERGENCY'
+            assignment.request.save(update_fields=['priority', 'updated_at'])
+
+        return JsonResponse({
+            'success': True,
+            'status': assignment.request.status,
+            'priority': assignment.request.priority,
+            'assistance_requested_at': now.isoformat(),
+        })
+    except DriverStatus.DoesNotExist:
+        return JsonResponse({'error': 'Driver status not found'}, status=404)
+    except Assignment.DoesNotExist:
+        return JsonResponse({'error': 'Assignment not found'}, status=404)
+    except ValueError as e:
+        return JsonResponse({'error': str(e)}, status=400)
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
 
@@ -748,7 +994,7 @@ def assign_recovery_request(request, request_id):
     )
     recovery_request.status = 'ASSIGNED'
     recovery_request.save(update_fields=['status', 'updated_at'])
-    driver.status = DriverStatus.Status.ON_TRIP
+    driver.status = DriverStatus.Status.IN_PROGRESS
     driver.save(update_fields=['status', 'updated_at'])
 
     messages.success(request, f"Request #{recovery_request.id} assigned to {driver.user.username}.")
@@ -769,7 +1015,7 @@ def decline_recovery_request(request, request_id):
         return redirect(redirect_target)
 
     latest_assignment = recovery_request.assignments.select_related('driver__user').order_by('-created_at').first()
-    if latest_assignment and latest_assignment.driver.status == DriverStatus.Status.ON_TRIP:
+    if latest_assignment and latest_assignment.driver.status == DriverStatus.Status.IN_PROGRESS:
         latest_assignment.cancellation_reason = 'Declined by admin'
         latest_assignment.save(update_fields=['cancellation_reason', 'updated_at'])
         latest_assignment.driver.status = DriverStatus.Status.AVAILABLE

@@ -1,6 +1,6 @@
 from django.urls import path
 from django.contrib import admin
-from usermanagement.views import admin_handle_request, admin_users, assign_recovery_request, decline_recovery_request, driver_requests, login_view, members, register_view, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services, submit_request, lookup_vehicle, cancel_request, get_driver_locations, update_driver_location, update_driver_status, accept_driver_assignment, member_request_driver_location
+from usermanagement.views import admin_handle_request, admin_users, assign_recovery_request, cancel_driver_assignment, complete_driver_assignment, decline_recovery_request, driver_assignment_snapshot, driver_requests, login_view, members, member_requests_status, register_view, request_driver_assistance, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services, submit_request, lookup_vehicle, cancel_request, get_driver_locations, update_driver_location, update_driver_status, accept_driver_assignment, member_request_driver_location
 
 urlpatterns = [
     path('register/', register_view, name='register'),
@@ -27,8 +27,13 @@ urlpatterns = [
     path('cancel-request/<int:request_id>/', cancel_request, name='cancel_request'),
     path('lookup-vehicle/', lookup_vehicle, name='lookup_vehicle'),
     path('api/driver-locations/', get_driver_locations, name='get_driver_locations'),
+    path('api/member-requests-status/', member_requests_status, name='member_requests_status'),
     path('api/member-request-driver-location/<int:request_id>/', member_request_driver_location, name='member_request_driver_location'),
     path('api/update-location/', update_driver_location, name='update_driver_location'),
     path('api/update-driver-status/', update_driver_status, name='update_driver_status'),
+    path('api/driver-assignment-snapshot/', driver_assignment_snapshot, name='driver_assignment_snapshot'),
     path('api/accept-driver-assignment/', accept_driver_assignment, name='accept_driver_assignment'),
+    path('api/complete-driver-assignment/', complete_driver_assignment, name='complete_driver_assignment'),
+    path('api/cancel-driver-assignment/', cancel_driver_assignment, name='cancel_driver_assignment'),
+    path('api/request-driver-assistance/', request_driver_assistance, name='request_driver_assistance'),
 ]

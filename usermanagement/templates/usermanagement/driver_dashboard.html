@@ -76,6 +76,14 @@
         background: green;
     }
 
+    .go-online-btn.busy {
+        background: #1a1a2e;
+        color: white;
+        border-color: #1a1a2e;
+        cursor: not-allowed;
+        opacity: 0.9;
+    }
+
     .dispatch-card {
         background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
         color: white;
@@ -375,6 +383,53 @@
     .navigation-btn:hover {
         background: #f0f4ff;
     }
+
+    .job-management-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+    }
+
+    .job-action-btn {
+        border: none;
+        border-radius: 8px;
+        padding: 12px 14px;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .job-action-btn.assistance {
+        background: #fff8e1;
+        color: #8a5a00;
+    }
+
+    .job-action-btn.cancel {
+        background: #ffebee;
+        color: #b71c1c;
+    }
+
+    .job-action-btn.complete {
+        background: #e8f5e9;
+        color: #1b5e20;
+    }
+
+    .assistance-status {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: rgba(255, 248, 225, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.32);
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    @media (max-width: 768px) {
+        .job-management-actions {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 
 <!-- Driver Header -->
@@ -386,8 +441,8 @@
             <p>{{ driver_status.vehicle_registration }} • {{ driver_status.vehicle_type }}</p>
         </div>
     </div>
-    <button class="go-online-btn {% if driver_status.status == 'AVAILABLE' %}online{% else %}offline{% endif %}" id="goOnlineBtn" onclick="toggleDriverStatus()">
-        {% if driver_status.status == 'AVAILABLE' %}Go Offline{% else %}Go Online{% endif %}
+    <button class="go-online-btn {% if driver_status.status == 'AVAILABLE' %}online{% elif driver_status.status == 'IN_PROGRESS' %}busy{% else %}offline{% endif %}" id="goOnlineBtn" onclick="toggleDriverStatus()" {% if driver_status.status == 'IN_PROGRESS' %}disabled{% endif %}>
+        {% if driver_status.status == 'AVAILABLE' %}Go Offline{% elif driver_status.status == 'IN_PROGRESS' %}On Job{% else %}Go Online{% endif %}
     </button>
 </div>
 
@@ -447,6 +502,17 @@
         <div style="font-size: 13px; font-weight: 700; letter-spacing: 0.4px; margin-top: 6px;">JOB LOCATION MAP</div>
         <div id="job-location-map"></div>
         <button type="button" class="navigation-btn" onclick="openNavigation()">Start Navigation</button>
+        {% if current_assignment.assistance_requested_at %}
+        <div class="assistance-status">
+            Assistance requested {{ current_assignment.assistance_requested_at|timesince }} ago.
+            {% if current_assignment.assistance_notes %}<br>{{ current_assignment.assistance_notes }}{% endif %}
+        </div>
+        {% endif %}
+        <div class="job-management-actions">
+            <button type="button" class="job-action-btn assistance" onclick="requestAssistance({{ current_assignment.id }})">Request Assistance</button>
+            <button type="button" class="job-action-btn cancel" onclick="cancelCurrentJob({{ current_assignment.id }})">Cancel Job</button>
+            <button type="button" class="job-action-btn complete" onclick="completeCurrentJob({{ current_assignment.id }})">Complete Job</button>
+        </div>
     </div>
     {% endif %}
 </div>
@@ -515,13 +581,21 @@
     const updateLocationApiUrl = "{% url 'update_driver_location' %}";
     const updateStatusApiUrl = "{% url 'update_driver_status' %}";
     const acceptAssignmentApiUrl = "{% url 'accept_driver_assignment' %}";
+    const completeAssignmentApiUrl = "{% url 'complete_driver_assignment' %}";
+    const cancelAssignmentApiUrl = "{% url 'cancel_driver_assignment' %}";
+    const requestAssistanceApiUrl = "{% url 'request_driver_assistance' %}";
+    const driverAssignmentSnapshotApiUrl = "{% url 'driver_assignment_snapshot' %}";
     const csrfToken = "{{ csrf_token }}";
     const destinationLat = Number("{{ current_assignment.request.location_latitude|default:'0' }}");
     const destinationLon = Number("{{ current_assignment.request.location_longitude|default:'0' }}");
     const assignmentStatus = "{{ current_assignment.request.status|default:'' }}";
+    const currentAssignmentId = Number("{{ current_assignment.id|default:0 }}") || 0;
+    const initialDriverFeedVersion = "{{ driver_feed_version|default:''|escapejs }}";
     const offerSentAtIso = "{{ current_assignment.offer_sent_at|date:'c'|default:''|escapejs }}";
     const driverResponseTimeoutSeconds = Number("{{ driver_response_timeout_seconds|default:60 }}");
     const autoShareStorageKey = 'driverAutoShareLocation';
+    let assignmentSnapshotPollInterval = null;
+    let lastDriverFeedVersion = initialDriverFeedVersion;
 
     function initJobLocationMap() {
         const mapContainer = document.getElementById('job-location-map');
@@ -627,24 +701,29 @@
     }
 
     // ============ ACCEPT & DECLINE ============
-    window.acceptAssignment = function(assignmentId) {
-        if (!confirm('Accept this dispatch?')) return;
-
-        fetch(acceptAssignmentApiUrl, {
+    function postAssignmentAction(apiUrl, payload) {
+        return fetch(apiUrl, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': csrfToken,
             },
-            body: JSON.stringify({ assignment_id: assignmentId })
+            body: JSON.stringify(payload)
         })
-        .then(response => response.json())
-        .then(data => {
-            if (!data.success) {
-                alert('Failed to start job: ' + (data.error || 'Unknown error'));
-                return;
+        .then(async response => {
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Request failed');
             }
+            return data;
+        });
+    }
 
+    window.acceptAssignment = function(assignmentId) {
+        if (!confirm('Accept this dispatch?')) return;
+
+        postAssignmentAction(acceptAssignmentApiUrl, { assignment_id: assignmentId })
+        .then(data => {
             localStorage.setItem(autoShareStorageKey, 'true');
 
             const finishReload = () => window.location.reload();
@@ -654,7 +733,7 @@
                 finishReload();
             }
         })
-        .catch(() => alert('Failed to start job. Please try again.'));
+        .catch(error => alert('Failed to start job: ' + error.message));
     };
 
     window.declineAssignment = function() {
@@ -663,8 +742,62 @@
         // TODO: Add actual API call to decline assignment
     };
 
+    window.completeCurrentJob = function(assignmentId) {
+        if (!confirm('Mark this job as completed?')) return;
+        const notes = window.prompt('Add completion notes for the job history (optional):', '');
+        if (notes === null) return;
+
+        postAssignmentAction(completeAssignmentApiUrl, {
+            assignment_id: assignmentId,
+            notes: notes,
+        })
+        .then(() => {
+            localStorage.removeItem(autoShareStorageKey);
+            alert('✓ Job marked as completed');
+            window.location.reload();
+        })
+        .catch(error => alert('Failed to complete job: ' + error.message));
+    };
+
+    window.cancelCurrentJob = function(assignmentId) {
+        if (!confirm('Cancel this job?')) return;
+        const reason = window.prompt('Reason for cancellation (optional):', '');
+        if (reason === null) return;
+
+        postAssignmentAction(cancelAssignmentApiUrl, {
+            assignment_id: assignmentId,
+            reason: reason,
+        })
+        .then(() => {
+            localStorage.removeItem(autoShareStorageKey);
+            alert('✓ Job cancelled');
+            window.location.reload();
+        })
+        .catch(error => alert('Failed to cancel job: ' + error.message));
+    };
+
+    window.requestAssistance = function(assignmentId) {
+        const notes = window.prompt('Describe the assistance you need (optional):', '');
+        if (notes === null) return;
+
+        postAssignmentAction(requestAssistanceApiUrl, {
+            assignment_id: assignmentId,
+            notes: notes,
+        })
+        .then(() => {
+            alert('✓ Assistance request sent');
+            window.location.reload();
+        })
+        .catch(error => alert('Failed to request assistance: ' + error.message));
+    };
+
     // ============ DRIVER STATUS ============
     window.toggleDriverStatus = function() {
+        if (currentDriverStatus === 'IN_PROGRESS') {
+            alert('Complete or cancel your current job before changing availability.');
+            return;
+        }
+
         const btn = document.getElementById('goOnlineBtn');
         const newStatus = currentDriverStatus === 'AVAILABLE' ? 'OFFLINE' : 'AVAILABLE';
 
@@ -845,12 +978,76 @@
         }
     };
 
+    function pollDriverAssignmentSnapshot() {
+        fetch(driverAssignmentSnapshotApiUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+            cache: 'no-store',
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Snapshot request failed');
+            }
+            return response.json();
+        })
+        .then(data => {
+            const snapshotHasAssignment = Boolean(data.has_assignment);
+            const snapshotAssignmentId = Number(data.assignment_id || 0);
+            const snapshotStatus = data.request_status || '';
+            const snapshotFeedVersion = data.feed_version || '';
+
+            if (snapshotFeedVersion && lastDriverFeedVersion && snapshotFeedVersion !== lastDriverFeedVersion) {
+                window.location.reload();
+                return;
+            }
+            if (snapshotFeedVersion && !lastDriverFeedVersion) {
+                lastDriverFeedVersion = snapshotFeedVersion;
+            }
+
+            // No assignment on page but new offer/active job appeared.
+            if (!currentAssignmentId && snapshotHasAssignment) {
+                window.location.reload();
+                return;
+            }
+
+            // Assignment disappeared from feed (completed/cancelled/expired elsewhere).
+            if (currentAssignmentId && !snapshotHasAssignment) {
+                window.location.reload();
+                return;
+            }
+
+            // Assignment changed (new offer, reroute, timeout rollover) or status changed.
+            if (currentAssignmentId && snapshotAssignmentId && snapshotAssignmentId !== currentAssignmentId) {
+                window.location.reload();
+                return;
+            }
+            if (currentAssignmentId && assignmentStatus && snapshotStatus && snapshotStatus !== assignmentStatus) {
+                window.location.reload();
+            }
+        })
+        .catch(() => {});
+    }
+
+    function startAssignmentSnapshotPolling() {
+        if (assignmentSnapshotPollInterval) {
+            clearInterval(assignmentSnapshotPollInterval);
+        }
+        pollDriverAssignmentSnapshot();
+        assignmentSnapshotPollInterval = setInterval(pollDriverAssignmentSnapshot, 5000);
+    }
+
     // Stop sharing when leaving page
     window.addEventListener('beforeunload', function() {
         stopLocationSharing(true);
+        if (assignmentSnapshotPollInterval) {
+            clearInterval(assignmentSnapshotPollInterval);
+        }
     });
     startOfferCountdown();
     initJobLocationMap();
+    startAssignmentSnapshotPolling();
 
     if (assignmentStatus === 'IN-PROGRESS' && localStorage.getItem(autoShareStorageKey) === 'true') {
         startLocationSharing(true).catch(() => {});

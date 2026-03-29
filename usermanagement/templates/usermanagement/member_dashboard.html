@@ -405,7 +405,7 @@ main {
                         <div class="driver-name">{{ recovery_request.service.name }}</div>
                         <p class="driver-sub">Ref: #{{ recovery_request.id }} · {{ recovery_request.created_at|date:"g:i A" }}</p>
                     </div>
-                    <span class="status-chip">{{ recovery_request.get_status_display }}</span>
+                    <span class="status-chip" id="status-chip-{{ recovery_request.id }}">{{ recovery_request.get_status_display }}</span>
                 </div>
 
                 <div class="driver-row">
@@ -413,7 +413,7 @@ main {
                         <div class="driver-name" style="font-size:0.98rem;">{{ recovery_request.vehicle_details }}</div>
                         <p class="driver-sub">{{ recovery_request.address }}</p>
                     </div>
-                    {% if recovery_request.status != 'COMPLETED' and recovery_request.status != 'CANCELLED' %}
+                    {% if recovery_request.status != 'COMPLETED' and recovery_request.status != 'CANCELLED' and recovery_request.status != 'IN-PROGRESS' %}
                     <form method="post" action="{% url 'cancel_request' recovery_request.id %}" onsubmit="return confirm('Cancel this recovery request?');">
                         {% csrf_token %}
                         <button type="submit" class="inline-link" style="border:none; background:transparent; padding:0; color:#b42318; font-weight:700;">Cancel Request</button>
@@ -421,30 +421,55 @@ main {
                     {% endif %}
                 </div>
 
-                <p class="driver-sub" style="margin-top: 10px;">Status: {{ recovery_request.get_status_display }}{% if recovery_request.place %} · {{ recovery_request.get_place_display }}{% endif %}</p>
+                <p class="driver-sub" id="status-text-{{ recovery_request.id }}" style="margin-top: 10px;">Status: {{ recovery_request.get_status_display }}{% if recovery_request.place %} · {{ recovery_request.get_place_display }}{% endif %}</p>
 
-                {% if recovery_request.current_assignment %}
-                <div class="driver-track-card">
+                {% if recovery_request.status != 'COMPLETED' and recovery_request.status != 'CANCELLED' %}
+                <div class="driver-track-card" id="driver-track-card-{{ recovery_request.id }}" data-has-assignment="{% if recovery_request.current_assignment %}1{% else %}0{% endif %}">
                     <div class="driver-track-grid">
                         <div>
-                            <div class="driver-name">Assigned Driver: {{ recovery_request.current_assignment.driver.user.username }}</div>
-                            <p class="driver-sub">{{ recovery_request.current_assignment.driver.vehicle_registration }} · {{ recovery_request.current_assignment.driver.vehicle_type }}</p>
-                            {% if recovery_request.current_assignment.driver.user.profile.phone %}
-                            <p class="driver-sub">Call: {{ recovery_request.current_assignment.driver.user.profile.phone }}</p>
-                            {% else %}
-                            <p class="driver-sub">Phone number not available yet.</p>
-                            {% endif %}
+                            <div class="driver-name" id="assigned-driver-name-{{ recovery_request.id }}">
+                                {% if recovery_request.current_assignment %}
+                                Assigned Driver: {{ recovery_request.current_assignment.driver.user.username }}
+                                {% else %}
+                                Waiting for a driver to accept your request...
+                                {% endif %}
+                            </div>
+                            <p class="driver-sub" id="assigned-driver-vehicle-{{ recovery_request.id }}">
+                                {% if recovery_request.current_assignment %}
+                                {{ recovery_request.current_assignment.driver.vehicle_registration }} · {{ recovery_request.current_assignment.driver.vehicle_type }}
+                                {% else %}
+                                We will show vehicle details once a driver is assigned.
+                                {% endif %}
+                            </p>
+                            <p class="driver-sub" id="assigned-driver-phone-{{ recovery_request.id }}">
+                                {% if recovery_request.current_assignment and recovery_request.current_assignment.driver.user.profile.phone %}
+                                Call: {{ recovery_request.current_assignment.driver.user.profile.phone }}
+                                {% elif recovery_request.current_assignment %}
+                                Phone number not available yet.
+                                {% else %}
+                                Call option will appear after assignment.
+                                {% endif %}
+                            </p>
                         </div>
-                        {% if recovery_request.current_assignment.driver.user.profile.phone %}
-                        <a class="call-btn" href="tel:{{ recovery_request.current_assignment.driver.user.profile.phone|cut:' ' }}">Call Driver</a>
-                        {% endif %}
+                        <a
+                            class="call-btn"
+                            id="assigned-driver-call-btn-{{ recovery_request.id }}"
+                            href="{% if recovery_request.current_assignment and recovery_request.current_assignment.driver.user.profile.phone %}tel:{{ recovery_request.current_assignment.driver.user.profile.phone|cut:' ' }}{% else %}#{% endif %}"
+                            {% if not recovery_request.current_assignment or not recovery_request.current_assignment.driver.user.profile.phone %}style="display:none;"{% endif %}
+                        >Call Driver</a>
                     </div>
                     <div
                         id="member-live-map-{{ recovery_request.id }}"
                         class="member-live-map"
                         data-endpoint="{% url 'member_request_driver_location' recovery_request.id %}"
                     ></div>
-                    <p class="driver-sub" id="driver-location-label-{{ recovery_request.id }}" style="margin-top: 10px;">Loading driver live location...</p>
+                    <p class="driver-sub" id="driver-location-label-{{ recovery_request.id }}" style="margin-top: 10px;">
+                        {% if recovery_request.current_assignment %}
+                        Loading driver live location...
+                        {% else %}
+                        Driver not assigned yet.
+                        {% endif %}
+                    </p>
                 </div>
                 {% endif %}
             </div>
@@ -525,9 +550,110 @@ refreshLocationBtn.addEventListener('click', loadCurrentLocation);
 
 const memberLiveMaps = {};
 
+function updateAssignedDriverInfo(requestId, data) {
+    const card = document.getElementById(`driver-track-card-${requestId}`);
+    if (!card) {
+        return;
+    }
+
+    const nameEl = document.getElementById(`assigned-driver-name-${requestId}`);
+    const vehicleEl = document.getElementById(`assigned-driver-vehicle-${requestId}`);
+    const phoneEl = document.getElementById(`assigned-driver-phone-${requestId}`);
+    const callBtn = document.getElementById(`assigned-driver-call-btn-${requestId}`);
+
+    if (!data.driver_name) {
+        card.dataset.hasAssignment = '0';
+        if (nameEl) nameEl.textContent = 'Waiting for a driver to accept your request...';
+        if (vehicleEl) vehicleEl.textContent = 'We will show vehicle details once a driver is assigned.';
+        if (phoneEl) phoneEl.textContent = 'Call option will appear after assignment.';
+        if (callBtn) {
+            callBtn.style.display = 'none';
+            callBtn.removeAttribute('href');
+        }
+        return;
+    }
+
+    card.dataset.hasAssignment = '1';
+    if (nameEl) nameEl.textContent = `Assigned Driver: ${data.driver_name}`;
+    if (vehicleEl) vehicleEl.textContent = `${data.vehicle_registration} · ${data.vehicle_type}`;
+
+    if (data.phone) {
+        if (phoneEl) phoneEl.textContent = `Call: ${data.phone}`;
+        if (callBtn) {
+            callBtn.style.display = 'inline-flex';
+            callBtn.setAttribute('href', `tel:${String(data.phone).replace(/\s+/g, '')}`);
+        }
+    } else {
+        if (phoneEl) phoneEl.textContent = 'Phone number not available yet.';
+        if (callBtn) {
+            callBtn.style.display = 'none';
+            callBtn.removeAttribute('href');
+        }
+    }
+}
+
+const STATUS_LABELS = {
+    'PENDING': 'Pending',
+    'ASSIGNED': 'Assigned',
+    'IN-PROGRESS': 'In Progress',
+    'COMPLETED': 'Completed',
+    'CANCELLED': 'Cancelled',
+};
+
+// Track current known status per request so we don't reload on first load.
+// memberRequestStatus is initialized below after the function definitions.
+
+function handleRequestStatusChange(requestId, newStatus) {
+    if (!newStatus) return;
+
+    const chip = document.getElementById(`status-chip-${requestId}`);
+    const statusText = document.getElementById(`status-text-${requestId}`);
+    const trackCard = document.getElementById(`driver-track-card-${requestId}`);
+
+    const label = STATUS_LABELS[newStatus] || newStatus;
+
+    if (chip) {
+        chip.textContent = label;
+        // Update chip colour for terminal states
+        if (newStatus === 'COMPLETED') {
+            chip.style.background = '#d1fae5';
+            chip.style.color = '#065f46';
+        } else if (newStatus === 'CANCELLED') {
+            chip.style.background = '#fee2e2';
+            chip.style.color = '#991b1b';
+        }
+    }
+
+    if (statusText) {
+        statusText.textContent = `Status: ${label}`;
+    }
+
+    const prevStatus = memberRequestStatus[requestId];
+    memberRequestStatus[requestId] = newStatus;
+
+    // On terminal state: hide tracking card and reload after a short delay.
+    if (newStatus === 'COMPLETED' || newStatus === 'CANCELLED') {
+        if (trackCard) trackCard.style.display = 'none';
+        // Only reload if there was a previous non-terminal status (actual change).
+        if (prevStatus && prevStatus !== 'COMPLETED' && prevStatus !== 'CANCELLED') {
+            setTimeout(() => window.location.reload(), 2000);
+        }
+    }
+}
+
 function initOrUpdateMemberMap(container, data) {
     const requestId = container.id.replace('member-live-map-', '');
     const label = document.getElementById(`driver-location-label-${requestId}`);
+
+    handleRequestStatusChange(requestId, data.request_status);
+    updateAssignedDriverInfo(requestId, data);
+
+    if (!data.driver_name) {
+        if (label) {
+            label.textContent = 'Driver not assigned yet.';
+        }
+        return;
+    }
 
     if (!data.available || data.driver_latitude === null || data.driver_longitude === null) {
         if (label) {
@@ -589,7 +715,36 @@ function refreshMemberDriverLocations() {
     });
 }
 
+// Seed initial status so we only react to actual changes, not the first poll.
+const memberRequestStatus = {};
+{% for recovery_request in today_requests %}
+memberRequestStatus['{{ recovery_request.id }}'] = '{{ recovery_request.status }}';
+{% endfor %}
+
+const memberRequestsStatusUrl = "{% url 'member_requests_status' %}";
+
+function pollMemberRequestStatuses() {
+    fetch(memberRequestsStatusUrl, { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+            const statuses = data.statuses || {};
+            Object.entries(statuses).forEach(([requestId, newStatus]) => {
+                const prevStatus = memberRequestStatus[requestId];
+                if (prevStatus === undefined) {
+                    // New request appeared (e.g. sent while page open); just track it.
+                    memberRequestStatus[requestId] = newStatus;
+                    return;
+                }
+                if (prevStatus === newStatus) return;
+                handleRequestStatusChange(requestId, newStatus);
+            });
+        })
+        .catch(() => {});
+}
+
 refreshMemberDriverLocations();
-setInterval(refreshMemberDriverLocations, 10000);
+setInterval(refreshMemberDriverLocations, 5000);
+pollMemberRequestStatuses();
+setInterval(pollMemberRequestStatuses, 1000);
 </script>
 {% endblock %}

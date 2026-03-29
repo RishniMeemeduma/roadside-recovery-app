@@ -32,7 +32,7 @@
 
             {% elif user.role == 'MEMBER' %}
                 <li class="nav-item">
-                    <a href="{% url 'home' %}" class="nav-link text-white active">⚙️ Dashboard</a>
+                    <a href="{% url 'dashboard' %}" class="nav-link text-white active">⚙️ Dashboard</a>
                 </li>
                 <li><a href="#" class="nav-link text-white-50">🚗 Request Service</a></li>
                 <li><a href="#" class="nav-link text-white-50">📋 My Requests</a></li>
@@ -40,7 +40,7 @@
 
             {% elif user.role == 'DRIVER' %}
                 <li class="nav-item">
-                    <a href="{% url 'home' %}" class="nav-link text-white active">⚙️ Dashboard</a>
+                    <a href="{% url 'dashboard' %}" class="nav-link text-white active">⚙️ Dashboard</a>
                 </li>
                 <li><a href="#" class="nav-link text-white-50">📋 Available Jobs</a></li>
                 <li><a href="#" class="nav-link text-white-50">✅ My Assignments</a></li>

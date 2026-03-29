@@ -48,7 +48,7 @@ class DriverStatus(models.Model):
     class Status(models.TextChoices):
         AVAILABLE = 'AVAILABLE', 'Available'
         OFFLINE = 'OFFLINE', 'Offline'
-        ON_TRIP = 'ON_TRIP', 'On Trip'
+        IN_PROGRESS = 'IN_PROGRESS', 'On Trip'
 
     class VehicleType(models.TextChoices):
         MOBILE_UNIT = 'MOBILE_UNIT', 'Mobile Unit'

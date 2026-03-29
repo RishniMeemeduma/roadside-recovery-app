@@ -74,6 +74,8 @@ class Assignment(models.Model):
     driver_response = models.CharField(max_length=10, choices=DriverResponse.choices)
     driver_responded_at = models.DateTimeField(null=True, blank=True)
     accepted_at = models.DateTimeField(null=True, blank=True)
+    assistance_requested_at = models.DateTimeField(null=True, blank=True)
+    assistance_notes = models.TextField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     cancellation_reason = models.TextField(null=True, blank=True)
     expired_at = models.DateTimeField(null=True, blank=True)
