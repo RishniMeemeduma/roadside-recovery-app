@@ -52,6 +52,106 @@
         margin-bottom: 4px;
         color: #1a1a2e;
     }
+
+    .detail-toggle {
+        border: none;
+        border-radius: 6px;
+        background: #f0f0f0;
+        color: #555;
+        padding: 6px 10px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .detail-toggle:hover {
+        background: #e0e0e0;
+    }
+
+    .detail-row td {
+        padding: 0 !important;
+        border-bottom: 1px solid #eee;
+    }
+
+    .detail-panel {
+        display: none;
+        padding: 20px 24px;
+        background: #fafafa;
+    }
+
+    .detail-panel.open {
+        display: block;
+    }
+
+    .detail-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    .detail-section h4 {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #888;
+        margin: 0 0 10px 0;
+        letter-spacing: 0.5px;
+    }
+
+    .detail-section dl {
+        display: grid;
+        grid-template-columns: 130px 1fr;
+        gap: 6px 12px;
+        font-size: 13px;
+        margin: 0;
+    }
+
+    .detail-section dt {
+        color: #888;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .detail-section dd {
+        color: #1a1a2e;
+        margin: 0;
+    }
+
+    .assignment-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        font-size: 13px;
+    }
+
+    .assignment-list li {
+        padding: 6px 0;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .assignment-list li:last-child {
+        border-bottom: none;
+    }
+
+    .response-badge {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .response-badge.accepted { background: #e8f5e9; color: #2e7d32; }
+    .response-badge.declined { background: #ffebee; color: #c62828; }
+    .response-badge.timeout { background: #fff3e0; color: #e65100; }
+
+    @media (max-width: 768px) {
+        .detail-grid {
+            grid-template-columns: 1fr;
+        }
+    }
 </style>
 <h2 style="font-size:22px; font-weight:700; color:#1a1a2e; margin-bottom:20px;">Recovery Requests</h2>
 <div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:24px;">
@@ -70,39 +170,106 @@
         </thead>
         <tbody>
             {% for req in requests %}
-            <tr id="request-{{ req.id }}">
+            <tr id="request-{{ req.id }}" data-status="{{ req.status }}">
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">#{{ req.id }}</td>
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.member.username }}</td>
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.service.name }}</td>
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">
+                    <span id="status-badge-{{ req.id }}">
                     {% if req.status == 'PENDING' %}
                         <span style="background:#fff3e0; color:#FF9800; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">PENDING</span>
-                    {% elif req.status == 'IN_PROGRESS' %}
+                    {% elif req.status == 'ASSIGNED' %}
+                        <span style="background:#ede7f6; color:#7b1fa2; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">DISPATCHED</span>
+                    {% elif req.status == 'IN-PROGRESS' %}
                         <span style="background:#e3f2fd; color:#2196F3; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">IN PROGRESS</span>
                     {% elif req.status == 'COMPLETED' %}
                         <span style="background:#e8f5e9; color:#4CAF50; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">COMPLETED</span>
                     {% else %}
                         <span style="background:#f5f5f5; color:#888; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">{{ req.status }}</span>
                     {% endif %}
+                    </span>
                 </td>
                 <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.priority }}</td>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">
-                    {% if req.status == 'PENDING' %}
+                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;" id="actions-{{ req.id }}">
                     <div class="request-actions">
+                        <button type="button" class="detail-toggle" onclick="toggleDetail({{ req.id }})">View</button>
+                        {% if req.status == 'PENDING' %}
                         <button type="button" data-bs-toggle="modal" data-bs-target="#assignRequestModal{{ req.id }}" style="border:none; border-radius:8px; background:#1976d2; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Assign</button>
                         <form method="post" action="{% url 'decline_recovery_request' req.id %}">
                             {% csrf_token %}
                             <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
                         </form>
+                        {% elif req.status == 'ASSIGNED' %}
+                        <form method="post" action="{% url 'decline_recovery_request' req.id %}">
+                            {% csrf_token %}
+                            <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
+                        </form>
+                        {% endif %}
                     </div>
-                    {% elif req.status == 'ASSIGNED' %}
-                    <form method="post" action="{% url 'decline_recovery_request' req.id %}">
-                        {% csrf_token %}
-                        <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
-                    </form>
-                    {% else %}
-                    <span style="font-size:13px; color:#888;">No actions</span>
-                    {% endif %}
+                </td>
+            </tr>
+            <tr class="detail-row">
+                <td colspan="6">
+                    <div class="detail-panel" id="detail-{{ req.id }}">
+                        <div class="detail-grid">
+                            <div class="detail-section">
+                                <h4>Request Info</h4>
+                                <dl>
+                                    <dt>Vehicle</dt>
+                                    <dd>{{ req.vehicle_details }}</dd>
+                                    <dt>Place</dt>
+                                    <dd>{{ req.place|default:'-' }}</dd>
+                                    <dt>Address</dt>
+                                    <dd>{{ req.address }}</dd>
+                                    <dt>Coordinates</dt>
+                                    <dd>{{ req.location_latitude }}, {{ req.location_longitude }}</dd>
+                                    <dt>Issue</dt>
+                                    <dd>{{ req.issue_description }}</dd>
+                                    <dt>Created</dt>
+                                    <dd>{{ req.created_at|date:'M j, Y g:i A' }}</dd>
+                                    <dt>Updated</dt>
+                                    <dd>{{ req.updated_at|date:'M j, Y g:i A' }}</dd>
+                                </dl>
+                            </div>
+                            <div class="detail-section">
+                                <h4>Assignment History</h4>
+                                {% if req.assignments.all %}
+                                <ul class="assignment-list">
+                                    {% for a in req.assignments.all %}
+                                    <li>
+                                        <span>
+                                            <strong>{{ a.driver.user.username }}</strong>
+                                            ({{ a.driver.vehicle_type }})
+                                            <br><small style="color:#888;">Sent {{ a.offer_sent_at|date:'g:i A' }}{% if a.driver_responded_at %} &middot; Responded {{ a.driver_responded_at|date:'g:i A' }}{% endif %}</small>
+                                        </span>
+                                        <span class="response-badge {% if a.driver_response == 'ACCEPTED' %}accepted{% elif a.driver_response == 'DECLINED' %}declined{% else %}timeout{% endif %}">
+                                            {{ a.driver_response }}
+                                        </span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                                {% else %}
+                                <p style="font-size:13px; color:#888; margin:0;">No drivers assigned yet.</p>
+                                {% endif %}
+
+                                {% if req.job_history %}
+                                <h4 style="margin-top:16px;">Job Completion</h4>
+                                <dl>
+                                    <dt>Duration</dt>
+                                    <dd>{{ req.job_history.completion_time_minutes }} minutes</dd>
+                                    {% if req.job_history.member_rating %}
+                                    <dt>Rating</dt>
+                                    <dd>{{ req.job_history.member_rating }} / 5</dd>
+                                    {% endif %}
+                                    {% if req.job_history.driver_notes %}
+                                    <dt>Driver Notes</dt>
+                                    <dd>{{ req.job_history.driver_notes }}</dd>
+                                    {% endif %}
+                                </dl>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
                 </td>
             </tr>
             {% empty %}
@@ -171,6 +338,13 @@
     {% endif %}
 {% endfor %}
 
+<script>
+function toggleDetail(reqId) {
+    const panel = document.getElementById('detail-' + reqId);
+    if (panel) panel.classList.toggle('open');
+}
+</script>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
 (function() {
@@ -223,13 +397,70 @@
             .catch(error => console.error('Error fetching driver locations:', error));
     }
 
+    const requestsStatusApiUrl = "{% url 'admin_requests_status' %}";
+
+    const statusBadgeHtml = {
+        'PENDING':     '<span style="background:#fff3e0; color:#FF9800; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">PENDING</span>',
+        'ASSIGNED':    '<span style="background:#ede7f6; color:#7b1fa2; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">DISPATCHED</span>',
+        'IN-PROGRESS': '<span style="background:#e3f2fd; color:#2196F3; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">IN PROGRESS</span>',
+        'COMPLETED':   '<span style="background:#e8f5e9; color:#4CAF50; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">COMPLETED</span>',
+        'CANCELLED':   '<span style="background:#f5f5f5; color:#888; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">CANCELLED</span>',
+    };
+
+    function actionsHtmlForStatus(status, reqId) {
+        if (status === 'PENDING') {
+            // Modal may not be in DOM if row was ASSIGNED on page load — show refresh prompt
+            const modal = document.getElementById('assignRequestModal' + reqId);
+            const assignBtn = modal
+                ? `<button type="button" data-bs-toggle="modal" data-bs-target="#assignRequestModal${reqId}" style="border:none; border-radius:8px; background:#1976d2; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Assign</button>`
+                : `<a href="" style="border:none; border-radius:8px; background:#1976d2; color:#fff; padding:8px 12px; font-size:13px; font-weight:600; text-decoration:none;">Refresh to Assign</a>`;
+            return `<div class="request-actions">
+                ${assignBtn}
+                <form method="post" action="/dashboard/recovery-requests/${reqId}/decline/">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                    <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
+                </form>
+            </div>`;
+        }
+        if (status === 'ASSIGNED') {
+            return `<form method="post" action="/dashboard/recovery-requests/${reqId}/decline/">
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
+            </form>`;
+        }
+        return '<span style="font-size:13px; color:#888;">No actions</span>';
+    }
+
+    function pollRequestsStatus() {
+        fetch(requestsStatusApiUrl, { cache: 'no-store' })
+            .then(r => r.json())
+            .then(data => {
+                data.requests.forEach(req => {
+                    const row = document.getElementById('request-' + req.id);
+                    if (!row) return;
+                    const prevStatus = row.dataset.status;
+                    if (prevStatus === req.status) return;
+
+                    // Update badge
+                    const badge = document.getElementById('status-badge-' + req.id);
+                    if (badge) badge.innerHTML = statusBadgeHtml[req.status] || `<span style="background:#f5f5f5; color:#888; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">${req.status}</span>`;
+
+                    // Update actions cell
+                    const actions = document.getElementById('actions-' + req.id);
+                    if (actions) actions.innerHTML = actionsHtmlForStatus(req.status, req.id);
+
+                    row.dataset.status = req.status;
+                });
+            })
+            .catch(() => {});
+    }
+
     // Initialize on page load
     document.addEventListener('DOMContentLoaded', function() {
         initMap();
         updateDriverLocations();
-        
-        // Update driver locations every 5 seconds
         setInterval(updateDriverLocations, 5000);
+        setInterval(pollRequestsStatus, 10000);
     });
 })();
 </script>

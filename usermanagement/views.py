@@ -1,6 +1,7 @@
 import requests as http_requests
 from math import atan2, cos, radians, sin, sqrt
 from datetime import timedelta
+from django.db import models
 from django.db.models import Max
 from django.conf import settings
 from django.contrib import messages
@@ -114,6 +115,12 @@ def _dispatch_to_next_optimal_drivers(recovery_request):
 def _rotate_expired_dispatch_offers(recovery_request):
     """If current offer window expired, timeout and dispatch to next nearest drivers."""
     if recovery_request.status != 'ASSIGNED':
+        return 0
+
+    # If any driver has already accepted, the request is being handled — don't rotate.
+    if recovery_request.assignments.filter(
+        driver_response=Assignment.DriverResponse.ACCEPTED
+    ).exists():
         return 0
 
     pending_offers = recovery_request.assignments.filter(
@@ -412,10 +419,28 @@ def driver_assignment_snapshot(request):
         'assignment_id': current_assignment.id,
         'request_id': current_assignment.request_id,
         'request_status': current_assignment.request.status,
+        'priority': current_assignment.request.priority,
+        'destination_lat': str(current_assignment.request.location_latitude),
+        'destination_lon': str(current_assignment.request.location_longitude),
         'feed_version': driver_feed_snapshot['feed_version'],
         'assignment_count': len(driver_feed_snapshot['assignment_ids']),
         'offer_sent_at': current_assignment.offer_sent_at.isoformat() if current_assignment.offer_sent_at else None,
         'updated_at': current_assignment.updated_at.isoformat(),
+    })
+
+
+@login_required
+def driver_dispatch_card(request):
+    """Return the rendered dispatch card partial for live DOM injection."""
+    if request.user.role != 'DRIVER':
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+    driver_status = get_object_or_404(
+        DriverStatus.objects.select_related('user'), user=request.user
+    )
+    current_assignment = _get_current_driver_assignment(driver_status)
+    return render(request, 'usermanagement/_dispatch_card.html', {
+        'current_assignment': current_assignment,
     })
 
 
@@ -578,7 +603,7 @@ def members(request):
 def admin_recovery_requests(request):
     if request.user.role != 'ADMIN':
         return redirect('home')
-    requests_list = RecoveryRequest.objects.select_related('member', 'service').prefetch_related('assignments__driver__user').order_by('-created_at')
+    requests_list = RecoveryRequest.objects.select_related('member', 'service', 'job_history').prefetch_related('assignments__driver__user').order_by('-created_at')
     available_drivers = DriverStatus.objects.select_related('user').filter(
         status=DriverStatus.Status.AVAILABLE,
         user__active=True,
@@ -589,6 +614,17 @@ def admin_recovery_requests(request):
         'requests': requests_list,
         'available_drivers': available_drivers,
     })
+
+
+@login_required
+def admin_requests_status(request):
+    """Return live status of all active recovery requests for admin polling."""
+    if request.user.role != 'ADMIN':
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+    active = RecoveryRequest.objects.exclude(
+        status__in=['COMPLETED', 'CANCELLED']
+    ).values('id', 'status')
+    return JsonResponse({'requests': list(active)})
 
 
 @login_required
@@ -763,6 +799,16 @@ def accept_driver_assignment(request):
         driver_status = DriverStatus.objects.get(user=request.user)
         assignment = _get_driver_assignment_for_action(driver_status, assignment_id)
 
+        # Handle driver declining the offer
+        action = data.get('action', 'accept')
+        if action == 'decline':
+            now = timezone.now()
+            assignment.driver_response = Assignment.DriverResponse.DECLINED
+            assignment.driver_responded_at = now
+            assignment.save(update_fields=['driver_response', 'driver_responded_at', 'updated_at'])
+            _dispatch_to_next_optimal_drivers(assignment.request)
+            return JsonResponse({'success': True})
+
         if assignment.request.status != 'ASSIGNED':
             return JsonResponse({'error': 'This request is no longer available.'}, status=409)
 
@@ -809,7 +855,42 @@ def accept_driver_assignment(request):
     except Exception as e:
         return JsonResponse({'error': str(e)}, status=400)
 
+@login_required
+def decline_driver_assignment(request):
+    """Driver declines a dispatch offer"""
+    if request.user.role != 'DRIVER':
+        return JsonResponse({'error': 'Only drivers can decline assignments'}, status=403)
+    
+    try:
+        import json
+        data = json.loads(request.body)
+        assignment_id = data.get('assignment_id')
 
+        driver_status = DriverStatus.objects.get(user=request.user)
+        assignment = _get_driver_assignment_for_action(driver_status, assignment_id)
+
+        if assignment.driver_response == Assignment.DriverResponse.ACCEPTED:
+            return JsonResponse({'error': 'You have already accepted this assignment.'}, status=409)
+        
+        now = timezone.now()
+        reason = data.get('reason', '').strip()
+        assignment.driver_response = Assignment.DriverResponse.DECLINED
+        assignment.driver_responded_at = now
+        assignment.cancellation_reason = reason or 'Declined by driver'
+        assignment.save(update_fields=['driver_response', 'driver_responded_at', 'cancellation_reason', 'updated_at'])
+
+        # try to dispatch to next optimal driver
+        _dispatch_to_next_optimal_drivers(assignment.request)
+
+        return JsonResponse({'success': True, 'status': assignment.request.status})
+
+    except DriverStatus.DoesNotExist:
+        return JsonResponse({'error': 'Driver status not found'}, status=404)
+    except Assignment.DoesNotExist:
+        return JsonResponse({'error': 'Assignment not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+        
 @login_required
 @require_POST
 def complete_driver_assignment(request):
@@ -992,7 +1073,7 @@ def assign_recovery_request(request, request_id):
         driver_responded_at=now,
         accepted_at=now,
     )
-    recovery_request.status = 'ASSIGNED'
+    recovery_request.status = 'IN-PROGRESS'
     recovery_request.save(update_fields=['status', 'updated_at'])
     driver.status = DriverStatus.Status.IN_PROGRESS
     driver.save(update_fields=['status', 'updated_at'])
@@ -1030,7 +1111,96 @@ def decline_recovery_request(request, request_id):
 def admin_analytics(request):
     if request.user.role != 'ADMIN':
         return redirect('home')
-    return render(request, 'usermanagement/admin_analytics.html')
+
+    import json as json_mod
+    from django.db.models import Count, Avg
+    from django.db.models.functions import TruncDate
+
+    total_requests = RecoveryRequest.objects.count()
+    completed = RecoveryRequest.objects.filter(status='COMPLETED').count()
+    cancelled = RecoveryRequest.objects.filter(status='CANCELLED').count()
+    pending = RecoveryRequest.objects.filter(status='PENDING').count()
+    in_progress = RecoveryRequest.objects.filter(status='IN-PROGRESS').count()
+
+    avg_completion = JobHistory.objects.aggregate(
+        avg=Avg('completion_time_minutes')
+    )['avg']
+
+    total_drivers = User.objects.filter(role='DRIVER', status='APPROVED').count()
+    total_members = User.objects.filter(role='MEMBER', status='APPROVED').count()
+    online_drivers = DriverStatus.objects.filter(status='AVAILABLE').count()
+
+    requests_by_service = RecoveryRequest.objects.values(
+        'service__name'
+    ).annotate(count=Count('id')).order_by('-count')
+
+    top_drivers = JobHistory.objects.values(
+        'driver__user__username'
+    ).annotate(
+        jobs=Count('id'),
+        avg_time=Avg('completion_time_minutes'),
+    ).order_by('-jobs')[:5]
+
+    # Requests per day for last 14 days
+    fourteen_days_ago = timezone.now() - timedelta(days=13)
+    daily_requests = (
+        RecoveryRequest.objects
+        .filter(created_at__date__gte=fourteen_days_ago.date())
+        .annotate(day=TruncDate('created_at'))
+        .values('day')
+        .annotate(
+            total=Count('id'),
+            completed_count=Count('id', filter=models.Q(status='COMPLETED')),
+            cancelled_count=Count('id', filter=models.Q(status='CANCELLED')),
+        )
+        .order_by('day')
+    )
+    # Build full 14-day series (fill gaps with zeros)
+    daily_map = {row['day']: row for row in daily_requests}
+    chart_labels = []
+    chart_total = []
+    chart_completed = []
+    chart_cancelled = []
+    for i in range(14):
+        day = (fourteen_days_ago + timedelta(days=i)).date()
+        row = daily_map.get(day, {})
+        chart_labels.append(day.strftime('%b %d'))
+        chart_total.append(row.get('total', 0))
+        chart_completed.append(row.get('completed_count', 0))
+        chart_cancelled.append(row.get('cancelled_count', 0))
+
+    # Driver performance: jobs + avg time for all drivers with history
+    driver_performance = JobHistory.objects.values(
+        'driver__user__username'
+    ).annotate(
+        jobs=Count('id'),
+        avg_time=Avg('completion_time_minutes'),
+    ).order_by('-jobs')[:10]
+
+    driver_perf_names = [d['driver__user__username'] for d in driver_performance]
+    driver_perf_jobs = [d['jobs'] for d in driver_performance]
+    driver_perf_times = [round(d['avg_time'], 1) if d['avg_time'] else 0 for d in driver_performance]
+
+    return render(request, 'usermanagement/admin_analytics.html', {
+        'total_requests': total_requests,
+        'completed': completed,
+        'cancelled': cancelled,
+        'pending': pending,
+        'in_progress': in_progress,
+        'avg_completion': round(avg_completion, 1) if avg_completion else 0,
+        'total_drivers': total_drivers,
+        'total_members': total_members,
+        'online_drivers': online_drivers,
+        'requests_by_service': requests_by_service,
+        'top_drivers': top_drivers,
+        'chart_labels_json': json_mod.dumps(chart_labels),
+        'chart_total_json': json_mod.dumps(chart_total),
+        'chart_completed_json': json_mod.dumps(chart_completed),
+        'chart_cancelled_json': json_mod.dumps(chart_cancelled),
+        'driver_perf_names_json': json_mod.dumps(driver_perf_names),
+        'driver_perf_jobs_json': json_mod.dumps(driver_perf_jobs),
+        'driver_perf_times_json': json_mod.dumps(driver_perf_times),
+    })
 
 @login_required
 def admin_services(request):

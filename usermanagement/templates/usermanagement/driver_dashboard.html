@@ -446,107 +446,7 @@
     </button>
 </div>
 
-<!-- Current Assignment (Dispatch Card) -->
-{% if current_assignment %}
-<div class="dispatch-card {% if current_assignment.request.priority == 'EMERGENCY' %}emergency{% elif current_assignment.request.priority == 'URGENT' %}urgent{% endif %}">
-    <div class="dispatch-badge">
-        {% if current_assignment.request.priority == 'EMERGENCY' %}
-            🚨 EMERGENCY DISPATCH
-        {% elif current_assignment.request.priority == 'URGENT' %}
-            ⚠️ URGENT DISPATCH
-        {% else %}
-            ⭐ {{ current_assignment.request.priority }} DISPATCH
-        {% endif %}
-    </div>
-    <div class="dispatch-timer" id="timer">⏱ 0:00</div>
-
-    <div class="dispatch-content">
-        <!-- Location & Issue Info -->
-        <div class="dispatch-info">
-            <div class="info-item">
-                <div class="info-icon">📍</div>
-                <div class="info-text">
-                    <span class="label">LOCATION</span>
-                    <span class="value">{{ current_assignment.request.address }}</span>
-                    <span class="value" style="font-size: 12px; opacity: 0.9;">{{ current_assignment.request.location_latitude }}, {{ current_assignment.request.location_longitude }}</span>
-                </div>
-            </div>
-
-            <div class="info-item">
-                <div class="info-icon">⚠️</div>
-                <div class="info-text">
-                    <span class="label">VEHICLE ISSUE</span>
-                    <span class="value">{{ current_assignment.request.issue_description }}</span>
-                </div>
-            </div>
-        </div>
-
-        <!-- Payout Box -->
-        <div class="payout-box">
-            <span class="payout-label">GUARANTEED PAYOUT</span>
-            <div class="payout-amount">£{{ current_assignment.request.service.price }}</div>
-            <span class="payout-note">💳 instant transfer</span>
-        </div>
-    </div>
-
-    {% if current_assignment.request.status == 'ASSIGNED' %}
-    <div class="dispatch-actions" id="dispatch-actions">
-        <button class="decline-btn" onclick="declineAssignment()">Decline</button>
-        <button
-            class="accept-btn"
-            onclick="acceptAssignment({{ current_assignment.id }})"
-        >Accept & Start</button>
-    </div>
-    {% else %}
-    <div id="in-progress-map-panel">
-        <div style="font-size: 13px; font-weight: 700; letter-spacing: 0.4px; margin-top: 6px;">JOB LOCATION MAP</div>
-        <div id="job-location-map"></div>
-        <button type="button" class="navigation-btn" onclick="openNavigation()">Start Navigation</button>
-        {% if current_assignment.assistance_requested_at %}
-        <div class="assistance-status">
-            Assistance requested {{ current_assignment.assistance_requested_at|timesince }} ago.
-            {% if current_assignment.assistance_notes %}<br>{{ current_assignment.assistance_notes }}{% endif %}
-        </div>
-        {% endif %}
-        <div class="job-management-actions">
-            <button type="button" class="job-action-btn assistance" onclick="requestAssistance({{ current_assignment.id }})">Request Assistance</button>
-            <button type="button" class="job-action-btn cancel" onclick="cancelCurrentJob({{ current_assignment.id }})">Cancel Job</button>
-            <button type="button" class="job-action-btn complete" onclick="completeCurrentJob({{ current_assignment.id }})">Complete Job</button>
-        </div>
-    </div>
-    {% endif %}
-</div>
-
-<!-- Location Sharing Section -->
-<div style="background: white; border: 1px solid #e0e0e0; border-radius: 12px; padding: 20px; margin-bottom: 30px;">
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap;">
-        <div>
-            <h3 style="font-size: 16px; font-weight: 700; color: #1a1a2e; margin: 0 0 8px 0;">24/7 Location Tracking</h3>
-            <p style="margin: 0; color: #666; font-size: 13px;">Share your live position so the control center can track you</p>
-            <div style="margin-top: 8px; display: flex; align-items: center; gap: 8px;">
-                <div style="width: 8px; height: 8px; border-radius: 50%; background: #ccc;" id="locationIndicator"></div>
-                <span id="locationStatus" style="font-size: 12px; color: #888;">Inactive</span>
-            </div>
-        </div>
-        <button class="toggle-btn start" id="toggleLocationBtn" onclick="toggleLocationSharing()" style="white-space: nowrap;">Start Sharing</button>
-    </div>
-</div>
-
-{% else %}
-<div style="background: white; border: 1px solid #e0e0e0; border-radius: 16px; padding: 60px 20px;">
-    <div class="no-assignment">
-        <div class="no-assignment-icon">⏳</div>
-        <h3 style="font-size: 18px; margin: 0 0 8px 0;">No Active Assignment</h3>
-        <p style="margin: 0; color: #999;">You'll receive a dispatch when one becomes available</p>
-        
-        <!-- Location Sharing for waiting drivers -->
-        <div style="margin-top: 30px; padding-top: 30px; border-top: 1px solid #eee;">
-            <p style="color: #666; margin-bottom: 12px;">You can share your location while waiting</p>
-            <button class="toggle-btn start" style="width: 200px;" id="toggleLocationBtn" onclick="toggleLocationSharing()">Start Sharing Location</button>
-        </div>
-    </div>
-</div>
-{% endif %}
+<div id="dispatch-area">{% include 'usermanagement/_dispatch_card.html' %}</div>
 
 <!-- Past Job Activity -->
 <h3 class="section-title">Past Job Activity</h3>
@@ -585,13 +485,15 @@
     const cancelAssignmentApiUrl = "{% url 'cancel_driver_assignment' %}";
     const requestAssistanceApiUrl = "{% url 'request_driver_assistance' %}";
     const driverAssignmentSnapshotApiUrl = "{% url 'driver_assignment_snapshot' %}";
+    const driverDispatchCardApiUrl = "{% url 'driver_dispatch_card' %}";
+    const declineAssignmentApiUrl = "{% url 'accept_driver_assignment' %}";
     const csrfToken = "{{ csrf_token }}";
-    const destinationLat = Number("{{ current_assignment.request.location_latitude|default:'0' }}");
-    const destinationLon = Number("{{ current_assignment.request.location_longitude|default:'0' }}");
-    const assignmentStatus = "{{ current_assignment.request.status|default:'' }}";
-    const currentAssignmentId = Number("{{ current_assignment.id|default:0 }}") || 0;
+    let destinationLat = Number("{{ current_assignment.request.location_latitude|default:'0' }}");
+    let destinationLon = Number("{{ current_assignment.request.location_longitude|default:'0' }}");
+    let assignmentStatus = "{{ current_assignment.request.status|default:'' }}";
+    let currentAssignmentId = Number("{{ current_assignment.id|default:0 }}") || 0;
     const initialDriverFeedVersion = "{{ driver_feed_version|default:''|escapejs }}";
-    const offerSentAtIso = "{{ current_assignment.offer_sent_at|date:'c'|default:''|escapejs }}";
+    let offerSentAtIso = "{{ current_assignment.offer_sent_at|date:'c'|default:''|escapejs }}";
     const driverResponseTimeoutSeconds = Number("{{ driver_response_timeout_seconds|default:60 }}");
     const autoShareStorageKey = 'driverAutoShareLocation';
     let assignmentSnapshotPollInterval = null;
@@ -736,10 +638,14 @@
         .catch(error => alert('Failed to start job: ' + error.message));
     };
 
-    window.declineAssignment = function() {
+    window.declineAssignment = function(assignmentId) {
         if (!confirm('Decline this dispatch?')) return;
-        alert('✓ Dispatch declined');
-        // TODO: Add actual API call to decline assignment
+        postAssignmentAction(declineAssignmentApiUrl, { assignment_id: assignmentId, reason: 'Declined by driver' })
+        .then(data => {
+            alert('✓ Dispatch declined');
+            window.location.reload();
+        })
+        .catch(error => alert('Failed to decline dispatch: ' + error.message));
     };
 
     window.completeCurrentJob = function(assignmentId) {
@@ -978,6 +884,92 @@
         }
     };
 
+    function playDispatchAlert() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const notes = [880, 1100, 880, 1100];
+            let time = ctx.currentTime;
+            notes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0, time);
+                gain.gain.linearRampToValueAtTime(0.4, time + 0.02);
+                gain.gain.linearRampToValueAtTime(0, time + 0.18);
+                osc.start(time);
+                osc.stop(time + 0.2);
+                time += 0.22;
+            });
+        } catch (e) {}
+    }
+
+    let isRefreshing = false;
+
+    function refreshDispatchCard(snapshotData) {
+        if (isRefreshing) return;
+        isRefreshing = true;
+
+        fetch(driverDispatchCardApiUrl, {
+            cache: 'no-store',
+            headers: { 'Accept': 'text/html' },
+        })
+        .then(r => {
+            if (!r.ok) throw new Error('Card fetch failed');
+            return r.text();
+        })
+        .then(html => {
+            const isNewAssignment = !currentAssignmentId && snapshotData.has_assignment;
+            document.getElementById('dispatch-area').innerHTML = html;
+
+            // Alert driver when a new job lands
+            if (isNewAssignment) {
+                playDispatchAlert();
+            }
+
+            // Update state variables so timer, map and polling stay in sync
+            currentAssignmentId = Number(snapshotData.assignment_id || 0);
+            assignmentStatus = snapshotData.request_status || '';
+            destinationLat = Number(snapshotData.destination_lat || 0);
+            destinationLon = Number(snapshotData.destination_lon || 0);
+            offerSentAtIso = snapshotData.offer_sent_at || '';
+            lastDriverFeedVersion = snapshotData.feed_version || '';
+
+            // Update header status button if driver status changed
+            const newDriverStatus = snapshotData.driver_status || currentDriverStatus;
+            if (newDriverStatus !== currentDriverStatus) {
+                currentDriverStatus = newDriverStatus;
+                const btn = document.getElementById('goOnlineBtn');
+                if (btn) {
+                    btn.className = 'go-online-btn ' + (
+                        newDriverStatus === 'AVAILABLE' ? 'online' :
+                        newDriverStatus === 'IN_PROGRESS' ? 'busy' : 'offline'
+                    );
+                    btn.textContent = newDriverStatus === 'AVAILABLE' ? 'Go Offline' :
+                                      newDriverStatus === 'IN_PROGRESS' ? 'On Job' : 'Go Online';
+                    btn.disabled = newDriverStatus === 'IN_PROGRESS';
+                }
+            }
+
+            // Restore location sharing button state if sharing was already active
+            if (isLocationSharingActive) {
+                updateLocationUI(true);
+            }
+
+            // Restart offer countdown and job map with fresh state
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            startOfferCountdown();
+            initJobLocationMap();
+        })
+        .catch(() => window.location.reload())
+        .finally(() => { isRefreshing = false; });
+    }
+
     function pollDriverAssignmentSnapshot() {
         fetch(driverAssignmentSnapshotApiUrl, {
             method: 'GET',
@@ -999,7 +991,7 @@
             const snapshotFeedVersion = data.feed_version || '';
 
             if (snapshotFeedVersion && lastDriverFeedVersion && snapshotFeedVersion !== lastDriverFeedVersion) {
-                window.location.reload();
+                refreshDispatchCard(data);
                 return;
             }
             if (snapshotFeedVersion && !lastDriverFeedVersion) {
@@ -1008,23 +1000,23 @@
 
             // No assignment on page but new offer/active job appeared.
             if (!currentAssignmentId && snapshotHasAssignment) {
-                window.location.reload();
+                refreshDispatchCard(data);
                 return;
             }
 
             // Assignment disappeared from feed (completed/cancelled/expired elsewhere).
             if (currentAssignmentId && !snapshotHasAssignment) {
-                window.location.reload();
+                refreshDispatchCard(data);
                 return;
             }
 
             // Assignment changed (new offer, reroute, timeout rollover) or status changed.
             if (currentAssignmentId && snapshotAssignmentId && snapshotAssignmentId !== currentAssignmentId) {
-                window.location.reload();
+                refreshDispatchCard(data);
                 return;
             }
             if (currentAssignmentId && assignmentStatus && snapshotStatus && snapshotStatus !== assignmentStatus) {
-                window.location.reload();
+                refreshDispatchCard(data);
             }
         })
         .catch(() => {});
