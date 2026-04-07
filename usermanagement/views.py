@@ -599,20 +599,180 @@ def members(request):
         'users': members,
     })
 
+def _filter_recovery_requests(params):
+    """Shared filter/search/sort/paginate logic for admin recovery requests."""
+    from django.db.models import Q, FloatField, Case, When, Value, IntegerField
+    from django.db.models.expressions import RawSQL
+    from django.core.paginator import Paginator
+
+    qs = RecoveryRequest.objects.select_related(
+        'member', 'service', 'job_history'
+    ).prefetch_related('assignments__driver__user')
+
+    applied = {}
+
+    # FR-S01: Text search
+    q = params.get('q', '').strip()
+    if q:
+        applied['q'] = q
+        qs = qs.filter(
+            Q(member__username__icontains=q) |
+            Q(address__icontains=q) |
+            Q(issue_description__icontains=q) |
+            Q(vehicle_details__icontains=q) |
+            Q(assignments__driver__user__username__icontains=q)
+        ).distinct()
+
+    # FR-S02: Date range
+    date_from = params.get('date_from', '').strip()
+    date_to = params.get('date_to', '').strip()
+    if date_from:
+        applied['date_from'] = date_from
+        qs = qs.filter(created_at__date__gte=date_from)
+    if date_to:
+        applied['date_to'] = date_to
+        qs = qs.filter(created_at__date__lte=date_to)
+
+    # FR-S03: Multi-criteria filters
+    status = params.get('status', '').strip()
+    if status:
+        applied['status'] = status
+        qs = qs.filter(status=status)
+
+    service_id = params.get('service', '').strip()
+    if service_id:
+        applied['service'] = service_id
+        qs = qs.filter(service_id=service_id)
+
+    priority = params.get('priority', '').strip()
+    if priority:
+        applied['priority'] = priority
+        qs = qs.filter(priority=priority)
+
+    # FR-S04: Geospatial radius search (Haversine via raw SQL)
+    lat = params.get('lat', '').strip()
+    lng = params.get('lng', '').strip()
+    radius = params.get('radius', '').strip()
+    has_geo = False
+    if lat and lng and radius:
+        try:
+            lat_f, lng_f, radius_f = float(lat), float(lng), float(radius)
+            applied['lat'] = lat
+            applied['lng'] = lng
+            applied['radius'] = radius
+            # Bounding box pre-filter for performance
+            deg_offset = radius_f / 69.0
+            qs = qs.filter(
+                location_latitude__gte=lat_f - deg_offset,
+                location_latitude__lte=lat_f + deg_offset,
+                location_longitude__gte=lng_f - deg_offset,
+                location_longitude__lte=lng_f + deg_offset,
+            )
+            haversine_sql = """
+                3959 * acos(LEAST(1.0, GREATEST(-1.0,
+                    cos(radians(%s)) * cos(radians(location_latitude))
+                    * cos(radians(location_longitude) - radians(%s))
+                    + sin(radians(%s)) * sin(radians(location_latitude))
+                )))
+            """
+            qs = qs.annotate(
+                distance=RawSQL(haversine_sql, [lat_f, lng_f, lat_f], output_field=FloatField())
+            ).filter(distance__lte=radius_f)
+            has_geo = True
+        except (ValueError, TypeError):
+            pass
+
+    # FR-S05: Sorting
+    sort = params.get('sort', 'date_desc').strip()
+    applied['sort'] = sort
+
+    priority_annotation = Case(
+        When(priority='EMERGENCY', then=Value(1)),
+        When(priority='MEDIUM', then=Value(2)),
+        When(priority='NORMAL', then=Value(3)),
+        default=Value(4),
+        output_field=IntegerField(),
+    )
+
+    if sort == 'date_asc':
+        qs = qs.order_by('created_at')
+    elif sort == 'priority_asc':
+        qs = qs.annotate(priority_rank=priority_annotation).order_by('priority_rank')
+    elif sort == 'priority_desc':
+        qs = qs.annotate(priority_rank=priority_annotation).order_by('-priority_rank')
+    elif sort == 'distance' and has_geo:
+        qs = qs.order_by('distance')
+    else:
+        qs = qs.order_by('-created_at')
+
+    total_count = qs.count()
+
+    # FR-S07: Pagination
+    paginator = Paginator(qs, 20)
+    page_obj = paginator.get_page(params.get('page', 1))
+
+    return page_obj, total_count, applied
+
+
 @login_required
 def admin_recovery_requests(request):
     if request.user.role != 'ADMIN':
         return redirect('home')
-    requests_list = RecoveryRequest.objects.select_related('member', 'service', 'job_history').prefetch_related('assignments__driver__user').order_by('-created_at')
+
+    page_obj, total_count, applied_filters = _filter_recovery_requests(request.GET)
+    services = Service.objects.filter(active=True).order_by('name')
     available_drivers = DriverStatus.objects.select_related('user').filter(
         status=DriverStatus.Status.AVAILABLE,
         user__active=True,
         user__status='APPROVED',
         user__deleted_at__isnull=True,
     ).order_by('user__username')
+
+    # Build querystring for pagination links (exclude 'page')
+    qs_copy = request.GET.copy()
+    qs_copy.pop('page', None)
+
     return render(request, 'usermanagement/admin_recovery_requests.html', {
-        'requests': requests_list,
+        'requests': page_obj,
+        'page_obj': page_obj,
+        'total_count': total_count,
+        'applied_filters': applied_filters,
+        'filter_querystring': qs_copy.urlencode(),
+        'services': services,
         'available_drivers': available_drivers,
+    })
+
+
+@login_required
+def admin_recovery_requests_api(request):
+    """JSON endpoint for real-time search result count and data (FR-S06)."""
+    if request.user.role != 'ADMIN':
+        return JsonResponse({'error': 'Unauthorized'}, status=403)
+
+    page_obj, total_count, applied_filters = _filter_recovery_requests(request.GET)
+
+    results = []
+    for req in page_obj:
+        accepted = req.assignments.filter(driver_response='ACCEPTED').first()
+        results.append({
+            'id': req.id,
+            'member': req.member.username,
+            'service': req.service.name,
+            'status': req.status,
+            'priority': req.priority,
+            'address': req.address,
+            'created_at': req.created_at.strftime('%b %d, %Y %I:%M %p'),
+            'distance': round(req.distance, 1) if hasattr(req, 'distance') and req.distance else None,
+            'driver': accepted.driver.user.username if accepted else None,
+        })
+
+    return JsonResponse({
+        'results': results,
+        'total_count': total_count,
+        'page': page_obj.number,
+        'num_pages': page_obj.paginator.num_pages,
+        'has_next': page_obj.has_next(),
+        'has_previous': page_obj.has_previous(),
     })
 
 
