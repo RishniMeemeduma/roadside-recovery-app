@@ -257,9 +257,16 @@
         }
     }
 </style>
-<h2 style="font-size:22px; font-weight:700; color:#1a1a2e; margin-bottom:20px;">Recovery Requests</h2>
-<div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:24px;">
-    <h3 style="font-size:16px; font-weight:600; color:#1a1a2e; margin-bottom:12px;">Driver Locations (Real-time)</h3>
+<div class="admin-wrap">
+<div class="admin-page-header">
+    <div>
+        <h1 class="title">Recovery Requests</h1>
+        <div class="subtitle">Live operations view — map, search and dispatch.</div>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header"><h3>Driver Locations (Real-time)</h3></div>
     <div id="driver-map"></div>
 </div>
 
@@ -342,53 +349,64 @@
     <div class="result-count"><span id="result-count">{{ total_count }}</span> result{{ total_count|pluralize }}</div>
 </form>
 
-<div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:24px;">
-    <table style="width:100%; border-collapse:collapse;">
+<div class="admin-card">
+    <div style="overflow-x:auto;">
+    <table class="admin-table">
         <thead>
-            <tr style="text-align:left; color:#888; font-size:12px; text-transform:uppercase;">
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">ID</th>
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Member</th>
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Service</th>
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Status</th>
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Priority</th>
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Actions</th>
+            <tr>
+                <th style="width:70px;">ID</th>
+                <th>Member</th>
+                <th>Service</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th style="min-width:200px;">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for req in requests %}
             <tr id="request-{{ req.id }}" data-status="{{ req.status }}">
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">#{{ req.id }}</td>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.member.username }}</td>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.service.name }}</td>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">
+                <td style="font-weight:600; color:var(--gray);">#{{ req.id }}</td>
+                <td style="font-weight:600;">{{ req.member.username }}</td>
+                <td>{{ req.service.name }}</td>
+                <td>
                     <span id="status-badge-{{ req.id }}">
                     {% if req.status == 'PENDING' %}
-                        <span style="background:#fff3e0; color:#FF9800; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">PENDING</span>
+                        <span class="pill pill-warn">Pending</span>
                     {% elif req.status == 'ASSIGNED' %}
-                        <span style="background:#ede7f6; color:#7b1fa2; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">DISPATCHED</span>
+                        <span class="pill pill-purple">Dispatched</span>
                     {% elif req.status == 'IN-PROGRESS' %}
-                        <span style="background:#e3f2fd; color:#2196F3; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">IN PROGRESS</span>
+                        <span class="pill pill-info">In Progress</span>
                     {% elif req.status == 'COMPLETED' %}
-                        <span style="background:#e8f5e9; color:#4CAF50; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">COMPLETED</span>
+                        <span class="pill pill-success">Completed</span>
+                    {% elif req.status == 'CANCELLED' %}
+                        <span class="pill pill-danger">Cancelled</span>
                     {% else %}
-                        <span style="background:#f5f5f5; color:#888; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">{{ req.status }}</span>
+                        <span class="pill pill-muted">{{ req.status }}</span>
                     {% endif %}
                     </span>
                 </td>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.priority }}</td>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;" id="actions-{{ req.id }}">
-                    <div class="request-actions">
-                        <button type="button" class="detail-toggle" onclick="toggleDetail({{ req.id }})">View</button>
+                <td>
+                    {% if req.priority == 'EMERGENCY' %}
+                        <span class="pill pill-danger">Emergency</span>
+                    {% elif req.priority == 'MEDIUM' %}
+                        <span class="pill pill-warn">Medium</span>
+                    {% else %}
+                        <span class="pill pill-muted">Normal</span>
+                    {% endif %}
+                </td>
+                <td id="actions-{{ req.id }}">
+                    <div class="request-actions admin-actions">
+                        <button type="button" class="btn-admin btn-admin-ghost btn-admin-sm" onclick="toggleDetail({{ req.id }})">View</button>
                         {% if req.status == 'PENDING' %}
-                        <button type="button" data-bs-toggle="modal" data-bs-target="#assignRequestModal{{ req.id }}" style="border:none; border-radius:8px; background:#1976d2; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Assign</button>
+                        <button type="button" class="btn-admin btn-admin-primary btn-admin-sm" data-bs-toggle="modal" data-bs-target="#assignRequestModal{{ req.id }}">Assign</button>
                         <form method="post" action="{% url 'decline_recovery_request' req.id %}">
                             {% csrf_token %}
-                            <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
+                            <button type="submit" class="btn-admin btn-admin-danger btn-admin-sm">Decline</button>
                         </form>
                         {% elif req.status == 'ASSIGNED' %}
                         <form method="post" action="{% url 'decline_recovery_request' req.id %}">
                             {% csrf_token %}
-                            <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
+                            <button type="submit" class="btn-admin btn-admin-danger btn-admin-sm">Decline</button>
                         </form>
                         {% endif %}
                     </div>
@@ -459,10 +477,16 @@
                 </td>
             </tr>
             {% empty %}
-            <tr><td colspan="6" style="padding:20px; text-align:center; color:#888;">No recovery requests found.</td></tr>
+            <tr><td colspan="6" class="empty-cell">
+                <div class="admin-empty">
+                    <div class="admin-empty-title">No recovery requests found</div>
+                    <div>Try adjusting your filters or clear the search.</div>
+                </div>
+            </td></tr>
             {% endfor %}
         </tbody>
     </table>
+    </div>
 
     <!-- Pagination (FR-S07) -->
     {% if page_obj.has_other_pages %}
@@ -482,6 +506,7 @@
         {% endif %}
     </div>
     {% endif %}
+</div>
 </div>
 
 {% for req in requests %}
@@ -604,11 +629,11 @@ function toggleDetail(reqId) {
     const requestsStatusApiUrl = "{% url 'admin_requests_status' %}";
 
     const statusBadgeHtml = {
-        'PENDING':     '<span style="background:#fff3e0; color:#FF9800; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">PENDING</span>',
-        'ASSIGNED':    '<span style="background:#ede7f6; color:#7b1fa2; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">DISPATCHED</span>',
-        'IN-PROGRESS': '<span style="background:#e3f2fd; color:#2196F3; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">IN PROGRESS</span>',
-        'COMPLETED':   '<span style="background:#e8f5e9; color:#4CAF50; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">COMPLETED</span>',
-        'CANCELLED':   '<span style="background:#f5f5f5; color:#888; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">CANCELLED</span>',
+        'PENDING':     '<span class="pill pill-warn">Pending</span>',
+        'ASSIGNED':    '<span class="pill pill-purple">Dispatched</span>',
+        'IN-PROGRESS': '<span class="pill pill-info">In Progress</span>',
+        'COMPLETED':   '<span class="pill pill-success">Completed</span>',
+        'CANCELLED':   '<span class="pill pill-danger">Cancelled</span>',
     };
 
     function actionsHtmlForStatus(status, reqId) {
@@ -616,23 +641,23 @@ function toggleDetail(reqId) {
             // Modal may not be in DOM if row was ASSIGNED on page load — show refresh prompt
             const modal = document.getElementById('assignRequestModal' + reqId);
             const assignBtn = modal
-                ? `<button type="button" data-bs-toggle="modal" data-bs-target="#assignRequestModal${reqId}" style="border:none; border-radius:8px; background:#1976d2; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Assign</button>`
-                : `<a href="" style="border:none; border-radius:8px; background:#1976d2; color:#fff; padding:8px 12px; font-size:13px; font-weight:600; text-decoration:none;">Refresh to Assign</a>`;
-            return `<div class="request-actions">
+                ? `<button type="button" class="btn-admin btn-admin-primary btn-admin-sm" data-bs-toggle="modal" data-bs-target="#assignRequestModal${reqId}">Assign</button>`
+                : `<a href="" class="btn-admin btn-admin-primary btn-admin-sm">Refresh to Assign</a>`;
+            return `<div class="request-actions admin-actions">
                 ${assignBtn}
                 <form method="post" action="/dashboard/recovery-requests/${reqId}/decline/">
                     <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-                    <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
+                    <button type="submit" class="btn-admin btn-admin-danger btn-admin-sm">Decline</button>
                 </form>
             </div>`;
         }
         if (status === 'ASSIGNED') {
             return `<form method="post" action="/dashboard/recovery-requests/${reqId}/decline/">
                 <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
-                <button type="submit" style="border:none; border-radius:8px; background:#d32f2f; color:#fff; padding:8px 12px; font-size:13px; font-weight:600;">Decline</button>
+                <button type="submit" class="btn-admin btn-admin-danger btn-admin-sm">Decline</button>
             </form>`;
         }
-        return '<span style="font-size:13px; color:#888;">No actions</span>';
+        return '<span style="font-size:0.82rem; color:var(--gray);">No actions</span>';
     }
 
     function pollRequestsStatus() {
@@ -647,7 +672,7 @@ function toggleDetail(reqId) {
 
                     // Update badge
                     const badge = document.getElementById('status-badge-' + req.id);
-                    if (badge) badge.innerHTML = statusBadgeHtml[req.status] || `<span style="background:#f5f5f5; color:#888; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">${req.status}</span>`;
+                    if (badge) badge.innerHTML = statusBadgeHtml[req.status] || `<span class="pill pill-muted">${req.status}</span>`;
 
                     // Update actions cell
                     const actions = document.getElementById('actions-' + req.id);

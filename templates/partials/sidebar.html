@@ -27,7 +27,7 @@
                 <li class="text-uppercase text-white-50 small px-3 py-2">Management</li>
                 <li><a href="{% url 'driver_requests' %}" class="nav-link text-white-50 {% if request.resolver_match.url_name == 'driver_requests' %}active text-white{%else%}text-white-50{% endif %}">📁 Drivers Requests</a></li>
                 <li><a href="{% url 'admin_services' %}" class="nav-link text-white-50 {% if request.resolver_match.url_name == 'admin_services' %}active text-white{%else%}text-white-50{% endif %}">📁 Services</a></li>
-                <li><a href="{% url 'admin_users' %}" class="nav-link text-white-50 {% if request.resolver_match.url_name == 'admin_users' %}active text-white{%else%}text-white-50{% endif %}">📁 admin Users</a></li>
+                <li><a href="{% url 'admin_users' %}" class="nav-link text-white-50 {% if request.resolver_match.url_name == 'admin_users' %}active text-white{%else%}text-white-50{% endif %}">📁 Admin Users</a></li>
 
 
             {% elif user.role == 'MEMBER' %}

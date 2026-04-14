@@ -96,9 +96,9 @@ class Command(BaseCommand):
 
         # Service seed
         services = [
-            {'name': 'Member Assist', 'description': 'Member-specific recovery', 'price': '25.00', 'estimated_duration': '30m'},
-            {'name': 'Driver Assist', 'description': 'Driver dispatch support', 'price': '30.00', 'estimated_duration': '40m'},
-            {'name': 'Towing', 'description': 'Vehicle towing', 'price': '50.00', 'estimated_duration': '1h'},
+            {'name': 'Member Assist', 'description': 'On-the-spot help for breakdowns, flat tyres, and minor mechanical issues to get you moving again.', 'price': '25.00', 'estimated_duration': '30m'},
+            {'name': 'Driver Assist', 'description': 'Rapid dispatch of a qualified recovery driver to your location for hands-on roadside support.', 'price': '30.00', 'estimated_duration': '40m'},
+            {'name': 'Towing', 'description': 'Safe and reliable vehicle towing to your chosen garage or destination across the Northwest.', 'price': '50.00', 'estimated_duration': '1h'},
         ]
 
         for svc in services:

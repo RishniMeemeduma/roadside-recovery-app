@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/Users/asham/Herd/roadside_recovery -type f -name *fixture* -o -name *seed*)",
+      "Bash(find /c/Users/asham/Herd/roadside_recovery -type f -name test*.py -path */tests/* -o -name tests.py)"
+    ]
+  }
+}

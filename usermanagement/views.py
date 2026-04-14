@@ -333,11 +333,23 @@ def dashboard(request):
             status__in=['PENDING', 'IN-PROGRESS', 'ASSIGNED']
         ).count()
         online_drivers = DriverStatus.objects.filter(status='AVAILABLE', user__active=True, user__status='APPROVED', user__deleted_at__isnull=True,).count()
-        drivers = DriverStatus.objects.select_related('user', 'user__profile').all()
+        active_members = User.objects.filter(
+            role='MEMBER',
+            active=True,
+            deleted_at__isnull=True,
+        ).count()
+        drivers_qs = DriverStatus.objects.select_related('user', 'user__profile').all()
+        drivers = []
+        for ds in drivers_qs:
+            ds.current_location = DriverLocation.objects.filter(
+                driver=ds.user, is_current=True
+            ).order_by('-id').first()
+            drivers.append(ds)
         pending_qs = RecoveryRequest.objects.filter(status='PENDING').select_related('member', 'service')
         return render(request, 'usermanagement/admin-dashboard.html', {
             'active_jobs': active_jobs,
             'online_drivers': online_drivers,
+            'active_members': active_members,
             'avg_response': 32,
             'drivers': drivers,
             'new_requests': pending_qs.order_by('-created_at')[:10],
