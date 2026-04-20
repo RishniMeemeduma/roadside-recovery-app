@@ -1,0 +1,10 @@
+# <type>(<scope>): <short summary — imperative, under 70 chars, no period>
+#
+# Why is this change needed? What problem does it solve?
+# Wrap the body at 72 characters.
+#
+# Closes #<issue-number>
+#
+# ---
+# Types: feat | fix | refactor | test | docs | chore | ci | perf | style
+# Scope: dispatch | auth | admin | driver | member | models | templates | ci | ...
