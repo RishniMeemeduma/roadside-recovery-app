@@ -873,3 +873,203 @@ class TestE2EFlows(BaseTestCase):
         self.assertEqual(a_first.driver_response, 'DECLINED')
         # Other driver should still be assigned already (from initial dispatch) or after re-dispatch
         self.assertTrue(Assignment.objects.filter(request=rr, driver=ds2).exists())
+
+
+class AdminUserCreationTests(TestCase):
+    """Tests for admin_create_user and admin_create_driver views (docs/decisions/user-creation.md sec 9)."""
+
+    def setUp(self):
+        self.admin = User.objects.create_user(
+            username='admin_creator',
+            email='admin_creator@test.com',
+            password='testpass123',
+            role='ADMIN',
+            status='APPROVED',
+            active=True,
+        )
+        self.create_user_url = reverse('admin_create_user')
+        self.create_driver_url = reverse('admin_create_driver')
+        self.members_url = reverse('members')
+
+    def _valid_member_data(self, **overrides):
+        data = {
+            'username': 'newmember',
+            'email': 'newmember@test.com',
+            'password': 'securepass1',
+            'first_name': 'New',
+            'last_name': 'Member',
+            'phone': '+441234567',
+        }
+        data.update(overrides)
+        return data
+
+    def _valid_driver_data(self, **overrides):
+        data = {
+            'username': 'newdriver',
+            'email': 'newdriver@test.com',
+            'password': 'securepass1',
+            'first_name': 'New',
+            'last_name': 'Driver',
+            'phone': '+441234567',
+            'license_number': 'LIC-999',
+            'vehicle_type': 'TOW_TRUCK',
+            'vehicle_registration': 'ZZ99 ABC',
+        }
+        data.update(overrides)
+        return data
+
+    def test_create_member_happy_path(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(self.create_user_url, self._valid_member_data())
+
+        self.assertRedirects(response, self.members_url, fetch_redirect_response=False)
+        self.assertTrue(User.objects.filter(username='newmember').exists())
+        user = User.objects.get(username='newmember')
+        self.assertEqual(user.role, 'MEMBER')
+        self.assertEqual(user.status, 'APPROVED')
+        self.assertTrue(user.active)
+
+        profile = UserProfile.objects.get(user=user)
+        self.assertEqual(profile.first_name, 'New')
+        self.assertEqual(profile.last_name, 'Member')
+        self.assertEqual(profile.phone, '+441234567')
+        self.assertEqual(profile.membership_tier, 'STANDARD')
+
+    def test_create_driver_happy_path(self):
+        self.client.force_login(self.admin)
+        response = self.client.post(self.create_driver_url, self._valid_driver_data())
+
+        self.assertRedirects(response, self.members_url, fetch_redirect_response=False)
+        user = User.objects.get(username='newdriver')
+        self.assertEqual(user.role, 'DRIVER')
+        self.assertEqual(user.status, 'APPROVED')
+        self.assertTrue(user.active)
+
+        profile = UserProfile.objects.get(user=user)
+        self.assertEqual(profile.first_name, 'New')
+        self.assertEqual(profile.membership_tier, 'STANDARD')
+
+        ds = DriverStatus.objects.get(user=user)
+        self.assertEqual(ds.status, 'OFFLINE')
+        self.assertEqual(ds.license_number, 'LIC-999')
+        self.assertEqual(ds.vehicle_type, 'TOW_TRUCK')
+        self.assertEqual(ds.vehicle_registration, 'ZZ99 ABC')
+
+    def test_duplicate_username_rejected(self):
+        User.objects.create_user(
+            username='takenname', email='taken@test.com',
+            password='existingpass', role='MEMBER', status='APPROVED',
+        )
+        self.client.force_login(self.admin)
+        count_before = User.objects.count()
+
+        data = self._valid_member_data(username='takenname', email='other@test.com')
+        response = self.client.post(self.create_user_url, data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(User.objects.count(), count_before)
+        self.assertIn('username', response.context['create_errors'])
+        self.assertEqual(response.context['open_modal'], 'member')
+        self.assertIn('already exists', response.context['create_errors']['username'].lower())
+        # Preserved non-password field values are rendered
+        self.assertIn('other@test.com', response.content.decode())
+
+    def test_duplicate_email_rejected(self):
+        User.objects.create_user(
+            username='otheruser', email='taken@test.com',
+            password='existingpass', role='MEMBER', status='APPROVED',
+        )
+        self.client.force_login(self.admin)
+        count_before = User.objects.count()
+
+        data = self._valid_member_data(username='brandnew', email='taken@test.com')
+        response = self.client.post(self.create_user_url, data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(User.objects.count(), count_before)
+        self.assertFalse(User.objects.filter(username='brandnew').exists())
+        self.assertIn('email', response.context['create_errors'])
+        self.assertEqual(response.context['open_modal'], 'member')
+        self.assertIn('already registered', response.context['create_errors']['email'].lower())
+        self.assertIn('brandnew', response.content.decode())
+
+    def test_missing_required_field(self):
+        self.client.force_login(self.admin)
+        count_before = User.objects.count()
+
+        data = self._valid_member_data()
+        data.pop('username')
+        response = self.client.post(self.create_user_url, data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(User.objects.count(), count_before)
+        self.assertIn('username', response.context['create_errors'])
+        self.assertEqual(response.context['open_modal'], 'member')
+        self.assertIn('required', response.context['create_errors']['username'].lower())
+
+    def test_driver_invalid_vehicle_type_rolls_back(self):
+        self.client.force_login(self.admin)
+        user_count_before = User.objects.count()
+        profile_count_before = UserProfile.objects.count()
+        ds_count_before = DriverStatus.objects.count()
+
+        data = self._valid_driver_data(vehicle_type='SPACESHIP')
+        response = self.client.post(self.create_driver_url, data)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(User.objects.count(), user_count_before)
+        self.assertEqual(UserProfile.objects.count(), profile_count_before)
+        self.assertEqual(DriverStatus.objects.count(), ds_count_before)
+        self.assertFalse(User.objects.filter(username='newdriver').exists())
+        self.assertIn('vehicle_type', response.context['create_errors'])
+        self.assertEqual(response.context['open_modal'], 'driver')
+        self.assertIn('vehicle type', response.context['create_errors']['vehicle_type'].lower())
+
+    def test_non_admin_redirected(self):
+        member = User.objects.create_user(
+            username='plainmember', email='plainmember@test.com',
+            password='memberpass1', role='MEMBER', status='APPROVED', active=True,
+        )
+        self.client.force_login(member)
+        count_before = User.objects.count()
+
+        response = self.client.post(self.create_driver_url, self._valid_driver_data())
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(User.objects.count(), count_before)
+        self.assertFalse(User.objects.filter(username='newdriver').exists())
+
+    def test_get_request_is_noop(self):
+        self.client.force_login(self.admin)
+        count_before = User.objects.count()
+
+        response_user = self.client.get(self.create_user_url)
+        response_driver = self.client.get(self.create_driver_url)
+
+        self.assertRedirects(response_user, self.members_url, fetch_redirect_response=False)
+        self.assertRedirects(response_driver, self.members_url, fetch_redirect_response=False)
+        self.assertEqual(User.objects.count(), count_before)
+
+    def test_driver_creation_stores_specialization(self):
+        s1 = Service.objects.create(name='Tow', description='Tow svc', price='50', estimated_duration=30, active=True)
+        s2 = Service.objects.create(name='Jumpstart', description='Jumpstart svc', price='30', estimated_duration=15, active=True)
+
+        self.client.force_login(self.admin)
+        data = self._valid_driver_data()
+        data['specialization'] = [str(s1.id), str(s2.id)]
+        response = self.client.post(self.create_driver_url, data)
+
+        self.assertRedirects(response, self.members_url, fetch_redirect_response=False)
+        ds = DriverStatus.objects.get(user__username='newdriver')
+        self.assertEqual(sorted(ds.specialization), sorted([s1.id, s2.id]))
+
+    def test_admin_supplied_password_can_login(self):
+        self.client.force_login(self.admin)
+        self.client.post(self.create_user_url, self._valid_member_data(
+            username='logintestuser', email='logintest@test.com', password='mypassword9',
+        ))
+        self.assertTrue(User.objects.filter(username='logintestuser').exists())
+
+        fresh = Client()
+        logged_in = fresh.login(username='logintestuser', password='mypassword9')
+        self.assertTrue(logged_in)

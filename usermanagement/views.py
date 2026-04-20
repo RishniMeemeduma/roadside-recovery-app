@@ -1,7 +1,10 @@
+import re
 import requests as http_requests
 from math import atan2, cos, radians, sin, sqrt
 from datetime import timedelta
-from django.db import models
+from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
+from django.db import models, transaction
 from django.db.models import Max
 from django.conf import settings
 from django.contrib import messages
@@ -483,7 +486,7 @@ def logout_view(request):
 
 @login_required(login_url="login")
 def admin_dashboard(request):
-    if request.user.role != User.Role.ADMIN:
+    if request.user.role != 'ADMIN':
         return redirect("home")
 
     users = User.objects.all()
@@ -505,61 +508,233 @@ def admin_dashboard(request):
         "drivers": drivers,
         "services": services,
         "requests": requests,
-        "user_roles": User.Role.choices,
+        "user_roles": User.ROLE_CHOICES,
         "driver_statuses": DriverStatus.Status.choices,
         "vehicle_types": DriverStatus.VehicleType.choices,
     }
     return render(request, "usermanagement/admin-dashboard.html", context)
 
 
+_PHONE_RE = re.compile(r"^\+?\d{7,15}$")
+
+
+def _validate_phone(raw):
+    """Return normalised phone string if valid, else None."""
+    if not raw:
+        return None
+    cleaned = raw.replace(" ", "")
+    if _PHONE_RE.match(cleaned):
+        return cleaned
+    return None
+
+
+def _render_members_page(request, **extra_context):
+    """Shared renderer for the admin users/members page. Used by the `members`
+    view for normal GETs and by the create-user/create-driver views when
+    validation fails so errors can be surfaced inline inside the modal."""
+    members_qs = User.objects.filter(role__in=['MEMBER', 'DRIVER']).select_related('profile').all()
+    services_qs = Service.objects.filter(active=True).order_by('name')
+    context = {'users': members_qs, 'services': services_qs}
+    context.update(extra_context)
+    return render(request, 'usermanagement/admin_users.html', context)
+
+
 @login_required(login_url="login")
 def admin_create_user(request):
-    if request.user.role != User.Role.ADMIN:
+    if request.user.role != 'ADMIN':
         return redirect("home")
-    if request.method == "POST":
-        username = request.POST.get("username")
-        email = request.POST.get("email")
-        password = request.POST.get("password")
-        role = request.POST.get("role", User.Role.MEMBER)
-        first_name = request.POST.get("first_name", "")
-        last_name = request.POST.get("last_name", "")
-        phone = request.POST.get("phone", "")
-        if User.objects.filter(username=username).exists():
-            messages.error(request, f"Username '{username}' already exists.")
-            return redirect("admin_dashboard")
-        user = User.objects.create_user(username=username, email=email, password=password, role=role)
-        UserProfile.objects.create(user=user, first_name=first_name, last_name=last_name, phone=phone)
-        messages.success(request, f"User '{username}' created successfully.")
-    return redirect("admin_dashboard")
+    if request.method != "POST":
+        return redirect("members")
+
+    username = (request.POST.get("username") or "").strip()
+    email = (request.POST.get("email") or "").strip()
+    password = request.POST.get("password") or ""
+    first_name = (request.POST.get("first_name") or "").strip()
+    last_name = (request.POST.get("last_name") or "").strip()
+    phone_raw = (request.POST.get("phone") or "").strip()
+
+    errors = {}
+    if not username:
+        errors['username'] = 'Required.'
+    if not email:
+        errors['email'] = 'Required.'
+    if not password:
+        errors['password'] = 'Required.'
+    if not first_name:
+        errors['first_name'] = 'Required.'
+    if not last_name:
+        errors['last_name'] = 'Required.'
+    if not phone_raw:
+        errors['phone'] = 'Required.'
+
+    if username and User.objects.filter(username=username).exists():
+        errors['username'] = f"Username '{username}' already exists."
+    if email and User.objects.filter(email=email).exists():
+        errors['email'] = f"Email '{email}' is already registered."
+    if email and 'email' not in errors:
+        try:
+            validate_email(email)
+        except ValidationError:
+            errors['email'] = 'Invalid email address.'
+    if password and len(password) < 8:
+        errors['password'] = 'Password must be at least 8 characters.'
+    phone = None
+    if phone_raw and 'phone' not in errors:
+        phone = _validate_phone(phone_raw)
+        if phone is None:
+            errors['phone'] = "Phone must be 7-15 digits, optionally starting with '+'."
+
+    if errors:
+        return _render_members_page(
+            request,
+            create_errors=errors,
+            create_form_data=request.POST.dict(),
+            open_modal='member',
+        )
+
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                role='MEMBER',
+                status="APPROVED",
+                active=True,
+            )
+            UserProfile.objects.create(
+                user=user,
+                first_name=first_name,
+                last_name=last_name,
+                phone=phone,
+                membership_tier="STANDARD",
+            )
+    except Exception as exc:
+        return _render_members_page(
+            request,
+            create_errors={'__all__': f"Failed to create member: {exc}"},
+            create_global_error=f"Failed to create member: {exc}",
+            create_form_data=request.POST.dict(),
+            open_modal='member',
+        )
+
+    messages.success(request, f"Member '{username}' created successfully.")
+    return redirect("members")
 
 
 @login_required(login_url="login")
 def admin_create_driver(request):
-    if request.user.role != User.Role.ADMIN:
+    if request.user.role != 'ADMIN':
         return redirect("home")
-    if request.method == "POST":
-        username = request.POST.get("username")
-        email = request.POST.get("email")
-        password = request.POST.get("password")
-        license_number = request.POST.get("license_number")
-        vehicle_type = request.POST.get("vehicle_type")
-        vehicle_registration = request.POST.get("vehicle_registration")
-        first_name = request.POST.get("first_name", "")
-        last_name = request.POST.get("last_name", "")
-        phone = request.POST.get("phone") or "0000000000"
-        if User.objects.filter(username=username).exists():
-            messages.error(request, f"Username '{username}' already exists.")
-            return redirect("admin_dashboard")
-        user = User.objects.create_user(username=username, email=email, password=password, role=User.Role.DRIVER)
-        UserProfile.objects.create(user=user, first_name=first_name, last_name=last_name, phone=phone)
-        DriverStatus.objects.create(user=user, license_number=license_number, vehicle_type=vehicle_type, vehicle_registration=vehicle_registration, qualification=[], specialization=[])
-        messages.success(request, f"Driver '{username}' created successfully.")
-    return redirect("admin_dashboard")
+    if request.method != "POST":
+        return redirect("members")
+
+    username = (request.POST.get("username") or "").strip()
+    email = (request.POST.get("email") or "").strip()
+    password = request.POST.get("password") or ""
+    first_name = (request.POST.get("first_name") or "").strip()
+    last_name = (request.POST.get("last_name") or "").strip()
+    phone_raw = (request.POST.get("phone") or "").strip()
+    license_number = (request.POST.get("license_number") or "").strip()
+    vehicle_type = (request.POST.get("vehicle_type") or "").strip()
+    vehicle_registration = (request.POST.get("vehicle_registration") or "").strip()
+    specialization_raw = request.POST.getlist("specialization")
+    specialization_ids = [int(x) for x in specialization_raw if x.isdigit()]
+    cleaned_specialization = list(
+        Service.objects.filter(id__in=specialization_ids, active=True).values_list('id', flat=True)
+    )
+
+    errors = {}
+    if not username:
+        errors['username'] = 'Required.'
+    if not email:
+        errors['email'] = 'Required.'
+    if not password:
+        errors['password'] = 'Required.'
+    if not first_name:
+        errors['first_name'] = 'Required.'
+    if not last_name:
+        errors['last_name'] = 'Required.'
+    if not phone_raw:
+        errors['phone'] = 'Required.'
+    if not license_number:
+        errors['license_number'] = 'Required.'
+    if not vehicle_registration:
+        errors['vehicle_registration'] = 'Required.'
+    if not vehicle_type:
+        errors['vehicle_type'] = 'Required.'
+    elif vehicle_type not in DriverStatus.VehicleType.values:
+        errors['vehicle_type'] = 'Invalid vehicle type.'
+
+    if username and User.objects.filter(username=username).exists():
+        errors['username'] = f"Username '{username}' already exists."
+    if email and User.objects.filter(email=email).exists():
+        errors['email'] = f"Email '{email}' is already registered."
+    if email and 'email' not in errors:
+        try:
+            validate_email(email)
+        except ValidationError:
+            errors['email'] = 'Invalid email address.'
+    if password and len(password) < 8:
+        errors['password'] = 'Password must be at least 8 characters.'
+    phone = None
+    if phone_raw and 'phone' not in errors:
+        phone = _validate_phone(phone_raw)
+        if phone is None:
+            errors['phone'] = "Phone must be 7-15 digits, optionally starting with '+'."
+
+    if errors:
+        return _render_members_page(
+            request,
+            create_errors=errors,
+            create_form_data=request.POST.dict(),
+            create_form_data_specialization=[str(x) for x in specialization_raw],
+            open_modal='driver',
+        )
+
+    try:
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=password,
+                role='DRIVER',
+                status="APPROVED",
+                active=True,
+            )
+            UserProfile.objects.create(
+                user=user,
+                first_name=first_name,
+                last_name=last_name,
+                phone=phone,
+                membership_tier="STANDARD",
+            )
+            DriverStatus.objects.create(
+                user=user,
+                status="OFFLINE",
+                license_number=license_number,
+                vehicle_type=vehicle_type,
+                vehicle_registration=vehicle_registration,
+                qualification=[],
+                specialization=cleaned_specialization,
+            )
+    except Exception as exc:
+        return _render_members_page(
+            request,
+            create_errors={'__all__': f"Failed to create driver: {exc}"},
+            create_global_error=f"Failed to create driver: {exc}",
+            create_form_data=request.POST.dict(),
+            create_form_data_specialization=[str(x) for x in specialization_raw],
+            open_modal='driver',
+        )
+
+    messages.success(request, f"Driver '{username}' created successfully.")
+    return redirect("members")
 
 
 @login_required(login_url="login")
 def admin_create_service(request):
-    if request.user.role != User.Role.ADMIN:
+    if request.user.role != 'ADMIN':
         return redirect("home")
     if request.method == "POST":
         name = request.POST.get("name")
@@ -568,12 +743,12 @@ def admin_create_service(request):
         estimated_duration = request.POST.get("estimated_duration")
         Service.objects.create(name=name, description=description, price=price, estimated_duration=estimated_duration)
         messages.success(request, f"Service '{name}' created successfully.")
-    return redirect("admin_dashboard")
+    return redirect("admin_services")
 
 
 @login_required(login_url="login")
 def admin_delete_user(request, user_id):
-    if request.user.role != User.Role.ADMIN:
+    if request.user.role != 'ADMIN':
         return redirect("home")
     user = get_object_or_404(User, uuid=user_id)
     if user == request.user:
@@ -581,7 +756,7 @@ def admin_delete_user(request, user_id):
     else:
         user.delete()
         messages.success(request, f"User '{user.username}' deleted.")
-    return redirect("admin_dashboard")
+    return redirect("members")
 
 
 @login_required(login_url="login")
@@ -591,7 +766,7 @@ def admin_delete_service(request, service_id):
     service = get_object_or_404(Service, id=service_id)
     service.delete()
     messages.success(request, f"Service '{service.name}' deleted.")
-    return redirect("admin_dashboard")
+    return redirect("admin_services")
 
 @login_required
 def admin_users(request):
@@ -606,10 +781,7 @@ def admin_users(request):
 def members(request):
     if request.user.role != 'ADMIN':
         return redirect('home')
-    members = User.objects.filter(role__in=['MEMBER', 'DRIVER']).select_related('profile').all()
-    return render(request, 'usermanagement/admin_users.html', {
-        'users': members,
-    })
+    return _render_members_page(request)
 
 def _filter_recovery_requests(params):
     """Shared filter/search/sort/paginate logic for admin recovery requests."""

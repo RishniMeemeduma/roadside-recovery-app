@@ -8,6 +8,10 @@
             <h1 class="title">Users</h1>
             <div class="subtitle">All registered members, drivers and administrators.</div>
         </div>
+        <div class="actions">
+            <button type="button" class="btn-admin btn-admin-primary" onclick="openCreateMemberModal()">Add Member</button>
+            <button type="button" class="btn-admin btn-admin-primary" onclick="openCreateDriverModal()">Add Driver</button>
+        </div>
     </div>
 
     <div class="admin-card">
@@ -48,4 +52,192 @@
         </div>
     </div>
 </div>
+
+<div id="create-member-modal" class="admin-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="create-member-title">
+    <div class="admin-modal-card">
+        <button type="button" class="close-btn" onclick="closeCreateMemberModal()" aria-label="Close">&times;</button>
+        <h3 id="create-member-title">Add Member</h3>
+        <form method="post" action="{% url 'admin_create_user' %}">
+            {% csrf_token %}
+            {% if open_modal == 'member' and create_global_error %}
+                <div style="background:#fee; border:1px solid #fcc; border-radius:8px; padding:12px; margin-bottom:16px; color:#c33; font-size:13px;">{{ create_global_error }}</div>
+            {% endif %}
+            <div class="admin-form-group">
+                <label for="member-username">Username</label>
+                <input id="member-username" type="text" name="username" required value="{% if open_modal == 'member' %}{{ create_form_data.username|default:'' }}{% endif %}">
+                {% if open_modal == 'member' and create_errors.username %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.username }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="member-email">Email</label>
+                <input id="member-email" type="email" name="email" required value="{% if open_modal == 'member' %}{{ create_form_data.email|default:'' }}{% endif %}">
+                {% if open_modal == 'member' and create_errors.email %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.email }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="member-password">Password</label>
+                <input id="member-password" type="password" name="password" required minlength="8" value="">
+                {% if open_modal == 'member' and create_errors.password %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.password }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="member-first-name">First Name</label>
+                <input id="member-first-name" type="text" name="first_name" required value="{% if open_modal == 'member' %}{{ create_form_data.first_name|default:'' }}{% endif %}">
+                {% if open_modal == 'member' and create_errors.first_name %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.first_name }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="member-last-name">Last Name</label>
+                <input id="member-last-name" type="text" name="last_name" required value="{% if open_modal == 'member' %}{{ create_form_data.last_name|default:'' }}{% endif %}">
+                {% if open_modal == 'member' and create_errors.last_name %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.last_name }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="member-phone">Phone</label>
+                <input id="member-phone" type="tel" name="phone" required placeholder="e.g. +441234567890" value="{% if open_modal == 'member' %}{{ create_form_data.phone|default:'' }}{% endif %}">
+                {% if open_modal == 'member' and create_errors.phone %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.phone }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn-admin btn-admin-ghost" onclick="closeCreateMemberModal()">Cancel</button>
+                <button type="submit" class="btn-admin btn-admin-primary">Create Member</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div id="create-driver-modal" class="admin-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="create-driver-title">
+    <div class="admin-modal-card">
+        <button type="button" class="close-btn" onclick="closeCreateDriverModal()" aria-label="Close">&times;</button>
+        <h3 id="create-driver-title">Add Driver</h3>
+        <form method="post" action="{% url 'admin_create_driver' %}">
+            {% csrf_token %}
+            {% if open_modal == 'driver' and create_global_error %}
+                <div style="background:#fee; border:1px solid #fcc; border-radius:8px; padding:12px; margin-bottom:16px; color:#c33; font-size:13px;">{{ create_global_error }}</div>
+            {% endif %}
+            <div class="admin-form-group">
+                <label for="driver-username">Username</label>
+                <input id="driver-username" type="text" name="username" required value="{% if open_modal == 'driver' %}{{ create_form_data.username|default:'' }}{% endif %}">
+                {% if open_modal == 'driver' and create_errors.username %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.username }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="driver-email">Email</label>
+                <input id="driver-email" type="email" name="email" required value="{% if open_modal == 'driver' %}{{ create_form_data.email|default:'' }}{% endif %}">
+                {% if open_modal == 'driver' and create_errors.email %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.email }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="driver-password">Password</label>
+                <input id="driver-password" type="password" name="password" required minlength="8" value="">
+                {% if open_modal == 'driver' and create_errors.password %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.password }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="driver-first-name">First Name</label>
+                <input id="driver-first-name" type="text" name="first_name" required value="{% if open_modal == 'driver' %}{{ create_form_data.first_name|default:'' }}{% endif %}">
+                {% if open_modal == 'driver' and create_errors.first_name %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.first_name }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="driver-last-name">Last Name</label>
+                <input id="driver-last-name" type="text" name="last_name" required value="{% if open_modal == 'driver' %}{{ create_form_data.last_name|default:'' }}{% endif %}">
+                {% if open_modal == 'driver' and create_errors.last_name %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.last_name }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="driver-phone">Phone</label>
+                <input id="driver-phone" type="tel" name="phone" required placeholder="e.g. +441234567890" value="{% if open_modal == 'driver' %}{{ create_form_data.phone|default:'' }}{% endif %}">
+                {% if open_modal == 'driver' and create_errors.phone %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.phone }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="driver-license">License Number</label>
+                <input id="driver-license" type="text" name="license_number" required value="{% if open_modal == 'driver' %}{{ create_form_data.license_number|default:'' }}{% endif %}">
+                {% if open_modal == 'driver' and create_errors.license_number %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.license_number }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="driver-vehicle-type">Vehicle Type</label>
+                {% if open_modal == 'driver' %}{% with vt=create_form_data.vehicle_type %}
+                <select id="driver-vehicle-type" name="vehicle_type" required>
+                    <option value="" {% if not vt %}selected{% endif %}>Select vehicle type</option>
+                    <option value="MOBILE_UNIT" {% if vt == 'MOBILE_UNIT' %}selected{% endif %}>Mobile Unit</option>
+                    <option value="TOW_TRUCK" {% if vt == 'TOW_TRUCK' %}selected{% endif %}>Tow Truck</option>
+                    <option value="FLATBED" {% if vt == 'FLATBED' %}selected{% endif %}>Flatbed</option>
+                </select>
+                {% endwith %}{% else %}
+                <select id="driver-vehicle-type" name="vehicle_type" required>
+                    <option value="">Select vehicle type</option>
+                    <option value="MOBILE_UNIT">Mobile Unit</option>
+                    <option value="TOW_TRUCK">Tow Truck</option>
+                    <option value="FLATBED">Flatbed</option>
+                </select>
+                {% endif %}
+                {% if open_modal == 'driver' and create_errors.vehicle_type %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.vehicle_type }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label for="driver-vehicle-reg">Vehicle Registration</label>
+                <input id="driver-vehicle-reg" type="text" name="vehicle_registration" required value="{% if open_modal == 'driver' %}{{ create_form_data.vehicle_registration|default:'' }}{% endif %}">
+                {% if open_modal == 'driver' and create_errors.vehicle_registration %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.vehicle_registration }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-form-group">
+                <label>Specialization <span style="font-weight:normal; color:var(--gray); font-size:0.85rem;">(services this driver can provide)</span></label>
+                <div style="display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; border:1px solid #d1d5db; border-radius:8px; padding:10px;">
+                    {% for service in services %}
+                        <label style="display:flex; align-items:center; gap:8px; font-weight:normal;">
+                            <input type="checkbox" name="specialization" value="{{ service.id }}"
+                                {% if open_modal == 'driver' and service.id|stringformat:'s' in create_form_data_specialization %}checked{% endif %}>
+                            {{ service.name }}
+                        </label>
+                    {% empty %}
+                        <div style="color:var(--gray); font-size:0.85rem;">No services available.</div>
+                    {% endfor %}
+                </div>
+                {% if open_modal == 'driver' and create_errors.specialization %}
+                    <div style="color:#c33; font-size:12px; margin-top:4px;">{{ create_errors.specialization }}</div>
+                {% endif %}
+            </div>
+            <div class="admin-modal-actions">
+                <button type="button" class="btn-admin btn-admin-ghost" onclick="closeCreateDriverModal()">Cancel</button>
+                <button type="submit" class="btn-admin btn-admin-primary">Create Driver</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+function openCreateMemberModal() { document.getElementById('create-member-modal').classList.add('open'); }
+function closeCreateMemberModal() { document.getElementById('create-member-modal').classList.remove('open'); }
+function openCreateDriverModal() { document.getElementById('create-driver-modal').classList.add('open'); }
+function closeCreateDriverModal() { document.getElementById('create-driver-modal').classList.remove('open'); }
+window.addEventListener('click', function(e) {
+    ['create-member-modal', 'create-driver-modal'].forEach(function(id) {
+        const m = document.getElementById(id);
+        if (e.target === m) m.classList.remove('open');
+    });
+});
+</script>
+{% if open_modal == 'member' %}
+<script>document.addEventListener('DOMContentLoaded', function() { openCreateMemberModal(); });</script>
+{% elif open_modal == 'driver' %}
+<script>document.addEventListener('DOMContentLoaded', function() { openCreateDriverModal(); });</script>
+{% endif %}
 {% endblock %}
