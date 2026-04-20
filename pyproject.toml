@@ -1,0 +1,58 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [
+    "*/migrations/*",
+    "**/__pycache__/**",
+    "venv",
+    ".venv",
+    "staticfiles",
+]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "DJ",  # flake8-django
+    "S",   # flake8-bandit (security)
+]
+ignore = [
+    "E501",   # line too long (handled by formatter)
+    "S101",   # use of assert (fine in tests)
+    "DJ001",  # nullable string fields — existing schema
+]
+
+[tool.ruff.lint.per-file-ignores]
+"*/tests.py" = ["S", "E"]
+"*/tests/*" = ["S", "E"]
+"roadsideassist/settings.py" = ["S105", "S106"]
+
+[tool.ruff.format]
+quote-style = "single"
+
+[tool.coverage.run]
+source = ["usermanagement", "recovery", "services", "core", "roadsideassist"]
+omit = [
+    "*/migrations/*",
+    "*/tests.py",
+    "*/tests/*",
+    "manage.py",
+    "*/wsgi.py",
+    "*/asgi.py",
+    "*/__pycache__/*",
+]
+
+[tool.coverage.report]
+precision = 1
+show_missing = true
+skip_covered = false
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+]
