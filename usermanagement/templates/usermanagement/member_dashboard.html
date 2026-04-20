@@ -1,0 +1,750 @@
+{% extends 'portal.html' %}
+{% block title %}Member Dashboard{% endblock %}
+
+{% block extra_css %}
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+:root {
+    --brand: #2f6feb;
+    --brand-soft: #eaf1ff;
+    --ink: #1e2638;
+    --muted: #6e7891;
+    --panel: #ffffff;
+    --line: #d9e1f2;
+    --ok: #e9f8ef;
+    --ok-text: #1f8b4d;
+}
+
+main {
+    background: radial-gradient(circle at top right, #f4f8ff 0%, #eef3fb 50%, #edf2f8 100%);
+}
+
+.member-shell {
+    max-width: 1080px;
+    margin: 0 auto;
+    font-family: 'Manrope', sans-serif;
+    color: var(--ink);
+}
+
+.member-card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: 0 8px 22px rgba(19, 36, 78, 0.08);
+    overflow: hidden;
+}
+
+.member-section {
+    padding: 18px;
+    border-bottom: 1px solid var(--line);
+}
+
+.member-section:last-child {
+    border-bottom: none;
+}
+
+.title-lg {
+    margin: 0;
+    font-size: 1.65rem;
+    font-weight: 800;
+}
+
+.subtitle {
+    margin: 6px 0 0;
+    color: var(--muted);
+    font-size: 0.92rem;
+}
+
+.issue-grid {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.issue-pill {
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    background: #f9fbff;
+    color: #2e3b5a;
+    padding: 12px;
+    font-weight: 700;
+    font-size: 0.9rem;
+    text-align: center;
+    transition: all 0.2s ease;
+}
+
+.issue-pill:hover {
+    background: var(--brand-soft);
+    border-color: #b5c9f7;
+}
+
+.issue-pill.active {
+    background: var(--brand-soft);
+    border-color: #7ea2ee;
+    box-shadow: inset 0 0 0 1px #7ea2ee;
+}
+
+.field {
+    margin-top: 12px;
+}
+
+.field label {
+    display: block;
+    font-size: 0.8rem;
+    color: #5a6480;
+    font-weight: 700;
+    margin-bottom: 6px;
+}
+
+.field input,
+.field textarea {
+    width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 11px 12px;
+    font-size: 0.94rem;
+    background: #fcfdff;
+    outline: none;
+}
+
+.field input:focus,
+.field textarea:focus {
+    border-color: #89abf5;
+    box-shadow: 0 0 0 3px rgba(47, 111, 235, 0.12);
+}
+
+.location-row {
+    margin-top: 14px;
+    background: var(--brand-soft);
+    border: 1px solid #c6d8fb;
+    border-radius: 10px;
+    padding: 10px 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.location-tag {
+    font-size: 0.82rem;
+    color: #32529b;
+    font-weight: 700;
+}
+
+.inline-link {
+    color: var(--brand);
+    font-size: 0.84rem;
+    text-decoration: none;
+    font-weight: 700;
+}
+
+.submit-btn {
+    margin-top: 14px;
+    width: 100%;
+    border: none;
+    border-radius: 10px;
+    background: linear-gradient(90deg, #5e8ff3 0%, #2f6feb 100%);
+    color: #fff;
+    font-weight: 800;
+    padding: 12px;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.submit-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(47, 111, 235, 0.35);
+}
+
+.guarantee {
+    margin-top: 14px;
+    font-size: 0.8rem;
+    color: #3f5ea6;
+    background: #edf3ff;
+    border: 1px solid #d2def8;
+    border-radius: 10px;
+    padding: 8px 10px;
+    font-weight: 700;
+}
+
+.map-zone {
+    height: 185px;
+    border-radius: 12px;
+    background:
+        linear-gradient(45deg, rgba(47, 111, 235, 0.08), rgba(47, 111, 235, 0)),
+        repeating-linear-gradient(90deg, #eef3fb 0 20px, #f7f9fe 20px 40px);
+    position: relative;
+    overflow: hidden;
+}
+
+.map-pin {
+    position: absolute;
+    right: 26%;
+    top: 42%;
+    width: 42px;
+    height: 42px;
+    border-radius: 50%;
+    background: #2f6feb;
+    color: #fff;
+    font-weight: 800;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 14px rgba(33, 80, 174, 0.35);
+}
+
+.status-card {
+    margin-top: 16px;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px;
+}
+
+.status-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.status-chip {
+    background: var(--ok);
+    color: var(--ok-text);
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 0.74rem;
+    font-weight: 800;
+}
+
+.driver-row {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #edf1f9;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.driver-name {
+    font-size: 0.92rem;
+    font-weight: 800;
+}
+
+.driver-sub {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--muted);
+}
+
+.foot-row {
+    margin-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    color: #7a849d;
+    font-size: 0.82rem;
+}
+
+.driver-track-card {
+    margin-top: 14px;
+    border: 1px solid #dbe6fb;
+    border-radius: 12px;
+    padding: 14px;
+    background: linear-gradient(180deg, #f8fbff 0%, #f2f7ff 100%);
+}
+
+.driver-track-grid {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.call-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 9px 14px;
+    border-radius: 999px;
+    background: #2f6feb;
+    color: #fff;
+    text-decoration: none;
+    font-size: 0.84rem;
+    font-weight: 800;
+}
+
+.call-btn:hover {
+    color: #fff;
+    background: #255cd3;
+}
+
+.member-live-map {
+    margin-top: 12px;
+    height: 220px;
+    border-radius: 12px;
+    border: 1px solid #d3ddf2;
+    overflow: hidden;
+}
+
+@media (max-width: 768px) {
+    main {
+        padding: 14px !important;
+    }
+
+    .member-section {
+        padding: 14px;
+    }
+
+    .issue-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .title-lg {
+        font-size: 1.35rem;
+    }
+
+    .location-row,
+    .status-top,
+    .driver-row,
+    .foot-row {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .map-zone {
+        height: 160px;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<div class="member-shell">
+    <div class="member-card">
+
+        {% if messages %}
+        <div style="margin-bottom:12px;">
+            {% for message in messages %}
+            {% if message.tags == 'error' %}
+            <div style="padding:12px 16px; border-radius:10px; font-size:0.9rem; font-weight:600; margin-bottom:6px; background:#fff2f2; border:1px solid #fca5a5; color:#991b1b;">
+            {% else %}
+            <div style="padding:12px 16px; border-radius:10px; font-size:0.9rem; font-weight:600; margin-bottom:6px; background:#f0fdf4; border:1px solid #86efac; color:#166534;">
+            {% endif %}
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <section class="member-section">
+            <h1 class="title-lg">Need Help?</h1>
+            <p class="subtitle">Tell us what's wrong and we'll send a recovery driver right away.</p>
+            <form method="post" action="{% url 'submit_request' %}">
+                {% csrf_token %}
+                <div class="issue-grid">
+                    {% for service in services %}
+                        <button class="issue-pill" type="button" data-service-id="{{ service.id }}">{{ service.name }}</button>
+                    {% endfor %}
+                </div>
+                <input type="hidden" name="service_id" id="selected-service-id" value="{{ form_data.service_id|default:'' }}">
+                <input type="hidden" name="latitude" id="selected-latitude" value="{{ form_data.latitude|default:'0.000000' }}">
+                <input type="hidden" name="longitude" id="selected-longitude" value="{{ form_data.longitude|default:'0.000000' }}">
+                <div class="field">
+                    <label for="vehicle-registration">Vehicle Registration</label>
+                    <input id="vehicle-registration" name="vehicle_registration" type="text" placeholder="e.g. AB12 CDE" required autocomplete="off" value="{{ form_data.vehicle_registration|default:'' }}">
+                </div>
+
+                <div class="field" style="display:flex; gap:8px; align-items:flex-end;">
+                    <div style="flex:1;">
+                        <label for="vehicle-details">Vehicle Make &amp; Model</label>
+                        <input id="vehicle-details" name="vehicle_details" type="text" placeholder="e.g. BMW 3 Series, 2020, Petrol" required value="{{ form_data.vehicle_details|default:'' }}">
+                    </div>
+                </div>
+
+                <div class="field">
+                    <label for="place">Place</label>
+                    <select id="place" name="place" required style="width:100%; border:1px solid var(--line); border-radius:10px; padding:11px 12px; font-size:0.94rem; background:#fcfdff; outline:none;">
+                        <option value="MOTORWAY" {% if form_data.place == 'MOTORWAY' %}selected{% endif %}>Motorway</option>
+                        <option value="ROAD" {% if form_data.place == 'ROAD' or not form_data %}selected{% endif %}>Road</option>
+                        <option value="NEAR HOUSE" {% if form_data.place == 'NEAR HOUSE' %}selected{% endif %}>Near House</option>
+                    </select>
+                </div>
+
+                <div class="field">
+                    <label for="details">More Details</label>
+                    <textarea id="details" name="details" rows="3" placeholder="Describe the issue" required>{{ form_data.details|default:'' }}</textarea>
+                </div>
+
+                <div class="location-row">
+                    <span class="location-tag" id="current-location-text">Your Location: Detecting current location...</span>
+                    <button type="button" class="inline-link" id="refresh-location-btn" style="border:none; background:transparent; padding:0;">Change</button>
+                </div>
+
+                <div class="field">
+                    <label for="address">Address</label>
+                    <textarea id="address" name="address" rows="2" placeholder="If map doesn't work, enter your address or postal code">{{ form_data.address|default:'' }}</textarea>
+                </div>
+
+                <button class="submit-btn" type="submit">Request Assistance</button>
+                <div class="guarantee">Quick Assist Guarantee: We average 25 minutes for response in the Northwest.</div>
+            </form>
+        </section>
+
+        {% if today_requests %}
+        <section class="member-section">
+            <h2 class="title-lg" style="font-size:1.2rem; margin-top:20px;">Today's Requests</h2>
+            <p class="subtitle">Track and manage the assistance requests you created today.</p>
+
+            {% for recovery_request in today_requests %}
+            <div class="status-card" style="margin-top:14px;">
+                <div class="status-top">
+                    <div>
+                        <div class="driver-name">{{ recovery_request.service.name }}</div>
+                        <p class="driver-sub">Ref: #{{ recovery_request.id }} · {{ recovery_request.created_at|date:"g:i A" }}</p>
+                    </div>
+                    <span class="status-chip" id="status-chip-{{ recovery_request.id }}">{{ recovery_request.get_status_display }}</span>
+                </div>
+
+                <div class="driver-row">
+                    <div>
+                        <div class="driver-name" style="font-size:0.98rem;">{{ recovery_request.vehicle_details }}</div>
+                        <p class="driver-sub">{{ recovery_request.address }}</p>
+                    </div>
+                    {% if recovery_request.status != 'COMPLETED' and recovery_request.status != 'CANCELLED' and recovery_request.status != 'IN-PROGRESS' %}
+                    <form method="post" action="{% url 'cancel_request' recovery_request.id %}" onsubmit="return confirm('Cancel this recovery request?');">
+                        {% csrf_token %}
+                        <button type="submit" class="inline-link" style="border:none; background:transparent; padding:0; color:#b42318; font-weight:700;">Cancel Request</button>
+                    </form>
+                    {% endif %}
+                </div>
+
+                <p class="driver-sub" id="status-text-{{ recovery_request.id }}" style="margin-top: 10px;">Status: {{ recovery_request.get_status_display }}{% if recovery_request.place %} · {{ recovery_request.get_place_display }}{% endif %}</p>
+
+                {% if recovery_request.status != 'COMPLETED' and recovery_request.status != 'CANCELLED' %}
+                <div class="driver-track-card" id="driver-track-card-{{ recovery_request.id }}" data-has-assignment="{% if recovery_request.current_assignment %}1{% else %}0{% endif %}">
+                    <div class="driver-track-grid">
+                        <div>
+                            <div class="driver-name" id="assigned-driver-name-{{ recovery_request.id }}">
+                                {% if recovery_request.current_assignment %}
+                                Assigned Driver: {{ recovery_request.current_assignment.driver.user.username }}
+                                {% else %}
+                                Waiting for a driver to accept your request...
+                                {% endif %}
+                            </div>
+                            <p class="driver-sub" id="assigned-driver-vehicle-{{ recovery_request.id }}">
+                                {% if recovery_request.current_assignment %}
+                                {{ recovery_request.current_assignment.driver.vehicle_registration }} · {{ recovery_request.current_assignment.driver.vehicle_type }}
+                                {% else %}
+                                We will show vehicle details once a driver is assigned.
+                                {% endif %}
+                            </p>
+                            <p class="driver-sub" id="assigned-driver-phone-{{ recovery_request.id }}">
+                                {% if recovery_request.current_assignment and recovery_request.current_assignment.driver.user.profile.phone %}
+                                Call: {{ recovery_request.current_assignment.driver.user.profile.phone }}
+                                {% elif recovery_request.current_assignment %}
+                                Phone number not available yet.
+                                {% else %}
+                                Call option will appear after assignment.
+                                {% endif %}
+                            </p>
+                        </div>
+                        <a
+                            class="call-btn"
+                            id="assigned-driver-call-btn-{{ recovery_request.id }}"
+                            href="{% if recovery_request.current_assignment and recovery_request.current_assignment.driver.user.profile.phone %}tel:{{ recovery_request.current_assignment.driver.user.profile.phone|cut:' ' }}{% else %}#{% endif %}"
+                            {% if not recovery_request.current_assignment or not recovery_request.current_assignment.driver.user.profile.phone %}style="display:none;"{% endif %}
+                        >Call Driver</a>
+                    </div>
+                    <div
+                        id="member-live-map-{{ recovery_request.id }}"
+                        class="member-live-map"
+                        data-endpoint="{% url 'member_request_driver_location' recovery_request.id %}"
+                    ></div>
+                    <p class="driver-sub" id="driver-location-label-{{ recovery_request.id }}" style="margin-top: 10px;">
+                        {% if recovery_request.current_assignment %}
+                        Loading driver live location...
+                        {% else %}
+                        Driver not assigned yet.
+                        {% endif %}
+                    </p>
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+    </div>
+
+    <div class="foot-row">
+        <span>24/7 Roadside Monitoring Enabled</span>
+        <span>&copy; 2026 Quick Assist Northwest</span>
+    </div>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const issueButtons = document.querySelectorAll('.issue-pill');
+const selectedServiceInput = document.getElementById('selected-service-id');
+const locationText = document.getElementById('current-location-text');
+const latitudeInput = document.getElementById('selected-latitude');
+const longitudeInput = document.getElementById('selected-longitude');
+const refreshLocationBtn = document.getElementById('refresh-location-btn');
+
+issueButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+        issueButtons.forEach((node) => node.classList.remove('active'));
+        btn.classList.add('active');
+        selectedServiceInput.value = btn.dataset.serviceId;
+    });
+});
+
+// Restore selected service after a validation error, else default to first
+const preselectedServiceId = selectedServiceInput.value;
+if (preselectedServiceId) {
+    const match = [...issueButtons].find(b => b.dataset.serviceId == preselectedServiceId);
+    if (match) match.classList.add('active');
+} else if (issueButtons.length > 0) {
+    issueButtons[0].classList.add('active');
+    selectedServiceInput.value = issueButtons[0].dataset.serviceId;
+}
+
+function loadCurrentLocation() {
+    if (!navigator.geolocation) {
+        locationText.textContent = 'Your Location: Geolocation not supported by this browser.';
+        return;
+    }
+
+    refreshLocationBtn.disabled = true;
+    refreshLocationBtn.textContent = 'Refreshing...';
+    locationText.textContent = 'Your Location: Refreshing current location...';
+
+    navigator.geolocation.getCurrentPosition(
+        (position) => {
+            const lat = position.coords.latitude.toFixed(6);
+            const lng = position.coords.longitude.toFixed(6);
+            const accuracy = Math.round(position.coords.accuracy || 0);
+            const refreshedAt = new Date().toLocaleTimeString();
+            latitudeInput.value = lat;
+            longitudeInput.value = lng;
+            locationText.textContent = `Your Location: ${lat}, ${lng} (+/- ${accuracy}m) at ${refreshedAt}`;
+            refreshLocationBtn.disabled = false;
+            refreshLocationBtn.textContent = 'Change';
+        },
+        () => {
+            locationText.textContent = 'Your Location: Permission denied. Enter address manually.';
+            refreshLocationBtn.disabled = false;
+            refreshLocationBtn.textContent = 'Change';
+        },
+        {
+            enableHighAccuracy: true,
+            timeout: 10000,
+            maximumAge: 0,
+        }
+    );
+}
+
+loadCurrentLocation();
+refreshLocationBtn.addEventListener('click', loadCurrentLocation);
+
+const memberLiveMaps = {};
+
+function updateAssignedDriverInfo(requestId, data) {
+    const card = document.getElementById(`driver-track-card-${requestId}`);
+    if (!card) {
+        return;
+    }
+
+    const nameEl = document.getElementById(`assigned-driver-name-${requestId}`);
+    const vehicleEl = document.getElementById(`assigned-driver-vehicle-${requestId}`);
+    const phoneEl = document.getElementById(`assigned-driver-phone-${requestId}`);
+    const callBtn = document.getElementById(`assigned-driver-call-btn-${requestId}`);
+
+    if (!data.driver_name) {
+        card.dataset.hasAssignment = '0';
+        if (nameEl) nameEl.textContent = 'Waiting for a driver to accept your request...';
+        if (vehicleEl) vehicleEl.textContent = 'We will show vehicle details once a driver is assigned.';
+        if (phoneEl) phoneEl.textContent = 'Call option will appear after assignment.';
+        if (callBtn) {
+            callBtn.style.display = 'none';
+            callBtn.removeAttribute('href');
+        }
+        return;
+    }
+
+    card.dataset.hasAssignment = '1';
+    if (nameEl) nameEl.textContent = `Assigned Driver: ${data.driver_name}`;
+    if (vehicleEl) vehicleEl.textContent = `${data.vehicle_registration} · ${data.vehicle_type}`;
+
+    if (data.phone) {
+        if (phoneEl) phoneEl.textContent = `Call: ${data.phone}`;
+        if (callBtn) {
+            callBtn.style.display = 'inline-flex';
+            callBtn.setAttribute('href', `tel:${String(data.phone).replace(/\s+/g, '')}`);
+        }
+    } else {
+        if (phoneEl) phoneEl.textContent = 'Phone number not available yet.';
+        if (callBtn) {
+            callBtn.style.display = 'none';
+            callBtn.removeAttribute('href');
+        }
+    }
+}
+
+const STATUS_LABELS = {
+    'PENDING': 'Pending',
+    'ASSIGNED': 'Assigned',
+    'IN-PROGRESS': 'In Progress',
+    'COMPLETED': 'Completed',
+    'CANCELLED': 'Cancelled',
+};
+
+// Track current known status per request so we don't reload on first load.
+// memberRequestStatus is initialized below after the function definitions.
+
+function handleRequestStatusChange(requestId, newStatus) {
+    if (!newStatus) return;
+
+    const chip = document.getElementById(`status-chip-${requestId}`);
+    const statusText = document.getElementById(`status-text-${requestId}`);
+    const trackCard = document.getElementById(`driver-track-card-${requestId}`);
+
+    const label = STATUS_LABELS[newStatus] || newStatus;
+
+    if (chip) {
+        chip.textContent = label;
+        // Update chip colour for terminal states
+        if (newStatus === 'COMPLETED') {
+            chip.style.background = '#d1fae5';
+            chip.style.color = '#065f46';
+        } else if (newStatus === 'CANCELLED') {
+            chip.style.background = '#fee2e2';
+            chip.style.color = '#991b1b';
+        }
+    }
+
+    if (statusText) {
+        statusText.textContent = `Status: ${label}`;
+    }
+
+    const prevStatus = memberRequestStatus[requestId];
+    memberRequestStatus[requestId] = newStatus;
+
+    // On terminal state: hide tracking card and reload after a short delay.
+    if (newStatus === 'COMPLETED' || newStatus === 'CANCELLED') {
+        if (trackCard) trackCard.style.display = 'none';
+        // Only reload if there was a previous non-terminal status (actual change).
+        if (prevStatus && prevStatus !== 'COMPLETED' && prevStatus !== 'CANCELLED') {
+            setTimeout(() => window.location.reload(), 2000);
+        }
+    }
+}
+
+function initOrUpdateMemberMap(container, data) {
+    const requestId = container.id.replace('member-live-map-', '');
+    const label = document.getElementById(`driver-location-label-${requestId}`);
+
+    handleRequestStatusChange(requestId, data.request_status);
+    updateAssignedDriverInfo(requestId, data);
+
+    if (!data.driver_name) {
+        if (label) {
+            label.textContent = 'Driver not assigned yet.';
+        }
+        return;
+    }
+
+    if (!data.available || data.driver_latitude === null || data.driver_longitude === null) {
+        if (label) {
+            label.textContent = 'Driver accepted the request. Waiting for live location update...';
+        }
+        return;
+    }
+
+    const driverLatLng = [data.driver_latitude, data.driver_longitude];
+    const requestLatLng = [data.request_latitude, data.request_longitude];
+    let mapState = memberLiveMaps[requestId];
+
+    if (!mapState) {
+        const map = L.map(container.id).setView(driverLatLng, 13);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19,
+        }).addTo(map);
+
+        const driverMarker = L.marker(driverLatLng).addTo(map).bindPopup(`${data.driver_name} live location`);
+        const requestMarker = L.marker(requestLatLng).addTo(map).bindPopup(data.request_address);
+        const route = L.polyline([driverLatLng, requestLatLng], {
+            color: '#2f6feb',
+            weight: 4,
+            opacity: 0.7,
+            dashArray: '8 8',
+        }).addTo(map);
+
+        map.fitBounds(route.getBounds(), { padding: [24, 24] });
+        mapState = memberLiveMaps[requestId] = { map, driverMarker, requestMarker, route };
+    } else {
+        mapState.driverMarker.setLatLng(driverLatLng);
+        mapState.requestMarker.setLatLng(requestLatLng);
+        mapState.route.setLatLngs([driverLatLng, requestLatLng]);
+    }
+
+    if (label) {
+        label.textContent = `Driver ${data.driver_name} is live. Last update: ${new Date(data.updated_at).toLocaleTimeString()}`;
+    }
+}
+
+function refreshMemberDriverLocations() {
+    document.querySelectorAll('.member-live-map').forEach((container) => {
+        const endpoint = container.dataset.endpoint;
+        if (!endpoint) {
+            return;
+        }
+
+        fetch(endpoint)
+            .then((response) => response.json())
+            .then((data) => initOrUpdateMemberMap(container, data))
+            .catch(() => {
+                const requestId = container.id.replace('member-live-map-', '');
+                const label = document.getElementById(`driver-location-label-${requestId}`);
+                if (label) {
+                    label.textContent = 'Unable to load live driver location right now.';
+                }
+            });
+    });
+}
+
+// Seed initial status so we only react to actual changes, not the first poll.
+const memberRequestStatus = {};
+{% for recovery_request in today_requests %}
+memberRequestStatus['{{ recovery_request.id }}'] = '{{ recovery_request.status }}';
+{% endfor %}
+
+const memberRequestsStatusUrl = "{% url 'member_requests_status' %}";
+
+function pollMemberRequestStatuses() {
+    fetch(memberRequestsStatusUrl, { cache: 'no-store' })
+        .then(r => r.json())
+        .then(data => {
+            const statuses = data.statuses || {};
+            Object.entries(statuses).forEach(([requestId, newStatus]) => {
+                const prevStatus = memberRequestStatus[requestId];
+                if (prevStatus === undefined) {
+                    // New request appeared (e.g. sent while page open); just track it.
+                    memberRequestStatus[requestId] = newStatus;
+                    return;
+                }
+                if (prevStatus === newStatus) return;
+                handleRequestStatusChange(requestId, newStatus);
+            });
+        })
+        .catch(() => {});
+}
+
+refreshMemberDriverLocations();
+setInterval(refreshMemberDriverLocations, 5000);
+pollMemberRequestStatuses();
+setInterval(pollMemberRequestStatuses, 1000);
+</script>
+{% endblock %}

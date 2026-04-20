@@ -17,6 +17,15 @@
         {% endblock %}
 
         <main class="flex-grow-1 p-4 bg-light">
+            {% if messages %}
+                <div style="max-width:1100px; margin-bottom:16px;">
+                    {% for message in messages %}
+                        <div class="alert {% if message.tags == 'error' %}alert-danger{% else %}alert-success{% endif %} mb-2" role="alert">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
             {% block content %}{% endblock %}
         </main>
     </div>

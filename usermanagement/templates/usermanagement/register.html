@@ -83,11 +83,60 @@
 
         <div style="margin-bottom:20px;">
             <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Register As</label>
-            <select name="role" required style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+            <select name="role" id="role-select" required style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
                 <option value="MEMBER">Member</option>
                 <option value="DRIVER">Driver</option>
             </select>
         </div>
+        <div id="driver-fields" style="display:none; border:1px solid #e0e0e0; border-radius:8px; padding:20px; margin-bottom:20px; background:#f9fafe;">
+            <h3 style="margin:0 0 16px 0; font-size:16px; color:#1a1a2e;">Driver Details</h3>
+
+            <div style="margin-bottom:16px;">
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">License Number *</label>
+                <input type="text" name="license_number" value="{{ form_data.license_number|default:'' }}"
+                    style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;"
+                    placeholder="e.g. DL-1234567890">
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Vehicle Type *</label>
+                <select name="vehicle_type" style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;">
+                    <option value="">-- Select Vehicle Type --</option>
+                    <option value="MOBILE_UNIT" {% if form_data.vehicle_type == 'MOBILE_UNIT' %}selected{% endif %}>Mobile Unit</option>
+                    <option value="TOW_TRUCK" {% if form_data.vehicle_type == 'TOW_TRUCK' %}selected{% endif %}>Tow Truck</option>
+                    <option value="FLATBED" {% if form_data.vehicle_type == 'FLATBED' %}selected{% endif %}>Flatbed</option>
+                </select>
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Vehicle Registration *</label>
+                <input type="text" name="vehicle_registration" value="{{ form_data.vehicle_registration|default:'' }}"
+                    style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;"
+                    placeholder="e.g. ABC-1234">
+            </div>
+
+            <div style="margin-bottom:16px;">
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Qualifications *</label>
+                <input type="text" name="qualification" value="{{ form_data.qualification|default:'' }}"
+                    style="width:100%; padding:12px; border:1px solid #ddd; border-radius:8px; font-size:14px;"
+                    placeholder="e.g. CDL Class A, Mechanical Cert (comma-separated)">
+            </div>
+
+            <div style="margin-bottom:8px;">
+                <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Specializations (Services) *</label>
+                <div style="max-height:160px; overflow-y:auto; border:1px solid #ddd; border-radius:8px; padding:12px; background:#fff;">
+                    {% for service in services %}
+                    <label style="display:flex; align-items:center; gap:8px; margin-bottom:8px; font-size:14px; cursor:pointer;">
+                        <input type="checkbox" name="specialization" value="{{ service.id }}">
+                        {{ service.name }}
+                    </label>
+                    {% empty %}
+                    <p style="color:#999; font-size:13px; margin:0;">No services available.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
 
         <div style="margin-bottom:20px;">
             <label style="display:block; margin-bottom:6px; font-weight:600; font-size:14px;">Password</label>
@@ -110,5 +159,17 @@
         Already have an account? <a href="{% url 'login' %}" style="color:#4a90d9; font-weight:600; text-decoration:none;">Log in</a>
     </p>
 </div>
-</div>  
+</div>
+<script>
+    const roleSelect = document.getElementById('role-select');
+    const driverFields = document.getElementById('driver-fields');
+
+    function toggleDriverFields() {
+        driverFields.style.display = roleSelect.value === 'DRIVER' ? 'block' : 'none';
+    }
+
+    roleSelect.addEventListener('change', toggleDriverFields);
+    toggleDriverFields();
+</script>
+
 {% endblock %}

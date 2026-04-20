@@ -1,0 +1,1049 @@
+{% extends 'portal.html' %}
+{% block title %}Driver Dashboard{% endblock %}
+
+{% block content %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+    .driver-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 30px;
+        flex-wrap: wrap;
+    }
+
+    .driver-info {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+
+    .driver-avatar {
+        width: 60px;
+        height: 60px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 24px;
+        font-weight: bold;
+    }
+
+    .driver-name h2 {
+        margin: 0;
+        font-size: 18px;
+        font-weight: 700;
+        color: #1a1a2e;
+    }
+
+    .driver-name p {
+        margin: 4px 0 0 0;
+        font-size: 13px;
+        color: #888;
+    }
+
+    .go-online-btn {
+        padding: 8px 24px;
+        border-radius: 20px;
+        border: 2px solid #4CAF50;
+        background: white;
+        color: red;
+        font-weight: 600;
+        cursor: pointer;
+        transition: 0.3s;
+    }
+
+    .go-online-btn:hover {
+        background: #f0f0f0;
+    }
+
+    .go-online-btn.online {
+        background: red;
+        color: white;
+        border-color: red;
+    }
+
+    .go-online-btn.offline {
+        background: green;
+        color: white;
+        border-color: green;
+    }
+
+    .go-online-btn.offline:hover {
+        background: green;
+    }
+
+    .go-online-btn.busy {
+        background: #1a1a2e;
+        color: white;
+        border-color: #1a1a2e;
+        cursor: not-allowed;
+        opacity: 0.9;
+    }
+
+    .dispatch-card {
+        background: linear-gradient(135deg, #1976d2 0%, #1565c0 100%);
+        color: white;
+        border-radius: 16px;
+        padding: 32px;
+        margin-bottom: 30px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .dispatch-card.emergency {
+        background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
+    }
+
+    .dispatch-card.urgent {
+        background: linear-gradient(135deg, #f57c00 0%, #e65100 100%);
+    }
+
+    .dispatch-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        width: 200px;
+        height: 200px;
+        background: rgba(255, 255, 255, 0.05);
+        border-radius: 50%;
+        transform: translate(50px, -50px);
+    }
+
+    .dispatch-badge {
+        display: inline-block;
+        background: rgba(255, 255, 255, 0.3);
+        padding: 6px 16px;
+        border-radius: 20px;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        margin-bottom: 20px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .dispatch-timer {
+        position: absolute;
+        top: 32px;
+        right: 32px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(255, 255, 255, 0.2);
+        padding: 8px 16px;
+        border-radius: 8px;
+        font-size: 18px;
+        font-weight: 700;
+        z-index: 1;
+    }
+
+    .dispatch-content {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 30px;
+        margin: 20px 0 30px 0;
+        position: relative;
+        z-index: 1;
+    }
+
+    .dispatch-info {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .info-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 12px;
+    }
+
+    .info-icon {
+        width: 28px;
+        height: 28px;
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 16px;
+        flex-shrink: 0;
+    }
+
+    .info-text {
+        flex: 1;
+    }
+
+    .info-text .label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        opacity: 0.9;
+        display: block;
+        margin-bottom: 4px;
+    }
+
+    .info-text .value {
+        font-size: 15px;
+        font-weight: 600;
+    }
+
+    .payout-box {
+        background: rgba(255, 255, 255, 0.15);
+        padding: 20px;
+        border-radius: 12px;
+        text-align: center;
+    }
+
+    .payout-label {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0.5px;
+        opacity: 0.9;
+        display: block;
+        margin-bottom: 8px;
+    }
+
+    .payout-amount {
+        font-size: 32px;
+        font-weight: 700;
+        margin-bottom: 8px;
+    }
+
+    .payout-note {
+        font-size: 12px;
+        opacity: 0.9;
+    }
+
+    .dispatch-actions {
+        display: grid;
+        grid-template-columns: 1fr 2fr;
+        gap: 12px;
+        position: relative;
+        z-index: 1;
+    }
+
+    .decline-btn, .accept-btn {
+        padding: 14px 24px;
+        border-radius: 8px;
+        border: none;
+        font-size: 15px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: 0.3s;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    .decline-btn {
+        background: rgba(255, 255, 255, 0.2);
+        color: white;
+        border: 2px solid rgba(255, 255, 255, 0.5);
+    }
+
+    .decline-btn:hover {
+        background: rgba(255, 255, 255, 0.3);
+    }
+
+    .accept-btn {
+        background: white;
+        color: #1976d2;
+        font-weight: 700;
+    }
+
+    .accept-btn:hover {
+        background: #f5f5f5;
+    }
+
+    .no-assignment {
+        text-align: center;
+        padding: 60px 20px;
+        color: #888;
+    }
+
+    .no-assignment-icon {
+        font-size: 48px;
+        margin-bottom: 20px;
+        opacity: 0.5;
+    }
+
+    .section-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1a1a2e;
+        margin-bottom: 16px;
+        margin-top: 30px;
+    }
+
+    .past-jobs {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+    }
+
+    .job-item {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 12px 16px;
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 8px;
+    }
+
+    .job-icon {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+    }
+
+    .job-icon.completed {
+        background: #e8f5e9;
+        color: #4CAF50;
+    }
+
+    .job-icon.failed {
+        background: #ffebee;
+        color: #f44336;
+    }
+
+    .job-details {
+        flex: 1;
+    }
+
+    .job-name {
+        font-weight: 600;
+        color: #1a1a2e;
+        margin-bottom: 2px;
+    }
+
+    .job-location {
+        font-size: 13px;
+        color: #888;
+    }
+
+    .location-sharing-toggle {
+        margin-top: 20px;
+        padding: 16px;
+        background: #f5f5f5;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+    }
+
+    .toggle-btn {
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: none;
+        font-weight: 600;
+        cursor: pointer;
+        transition: 0.3s;
+    }
+
+    .toggle-btn.start {
+        background: #4CAF50;
+        color: white;
+    }
+
+    .toggle-btn.stop {
+        background: #f44336;
+        color: white;
+    }
+
+    #job-location-map {
+        width: 100%;
+        height: 340px;
+        border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.35);
+        margin-top: 16px;
+    }
+
+    .navigation-btn {
+        margin-top: 12px;
+        padding: 10px 16px;
+        border: none;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #0f4fa8;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .navigation-btn:hover {
+        background: #f0f4ff;
+    }
+
+    .job-management-actions {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 16px;
+    }
+
+    .job-action-btn {
+        border: none;
+        border-radius: 8px;
+        padding: 12px 14px;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+    }
+
+    .job-action-btn.assistance {
+        background: #fff8e1;
+        color: #8a5a00;
+    }
+
+    .job-action-btn.cancel {
+        background: #ffebee;
+        color: #b71c1c;
+    }
+
+    .job-action-btn.complete {
+        background: #e8f5e9;
+        color: #1b5e20;
+    }
+
+    .assistance-status {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: rgba(255, 248, 225, 0.16);
+        border: 1px solid rgba(255, 255, 255, 0.32);
+        font-size: 13px;
+        font-weight: 600;
+    }
+
+    @media (max-width: 768px) {
+        .job-management-actions {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+
+<!-- Driver Header -->
+<div class="driver-header">
+    <div class="driver-info">
+        <div class="driver-avatar" id="driverAvatar">{{ driver_status.user.username|first|upper }}</div>
+        <div class="driver-name">
+            <h2>{{ driver_status.user.username }}</h2>
+            <p>{{ driver_status.vehicle_registration }} • {{ driver_status.vehicle_type }}</p>
+        </div>
+    </div>
+    <button class="go-online-btn {% if driver_status.status == 'AVAILABLE' %}online{% elif driver_status.status == 'IN_PROGRESS' %}busy{% else %}offline{% endif %}" id="goOnlineBtn" onclick="toggleDriverStatus()" {% if driver_status.status == 'IN_PROGRESS' %}disabled{% endif %}>
+        {% if driver_status.status == 'AVAILABLE' %}Go Offline{% elif driver_status.status == 'IN_PROGRESS' %}On Job{% else %}Go Online{% endif %}
+    </button>
+</div>
+
+<div id="dispatch-area">{% include 'usermanagement/_dispatch_card.html' %}</div>
+
+<!-- Past Job Activity -->
+<h3 class="section-title">Past Job Activity</h3>
+<div class="past-jobs">
+    {% for job in past_jobs %}
+    <div class="job-item">
+        <div class="job-icon {% if job.completion_time_minutes %}completed{% else %}failed{% endif %}">
+            {% if job.completion_time_minutes %}✓{% else %}✕{% endif %}
+        </div>
+        <div class="job-details">
+            <div class="job-name">{{ job.request.service.name }}</div>
+            <div class="job-location">{{ job.request.address }}</div>
+            {% if job.completion_time_minutes %}
+            <small style="color: #999;">{{ job.completion_time_minutes }} min • Rating: {% for i in "12345" %}{% if forloop.counter <= job.member_rating %}⭐{% else %}☆{% endif %}{% endfor %}</small>
+            {% endif %}
+        </div>
+    </div>
+    {% empty %}
+    <div style="padding: 20px; text-align: center; color: #999;">
+        <p style="margin: 0;">No past jobs yet</p>
+    </div>
+    {% endfor %}
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function() {
+    let locationInterval = null;
+    let isLocationSharingActive = false;
+    let timerInterval = null;
+    let currentDriverStatus = "{{ driver_status.status }}";
+    const updateLocationApiUrl = "{% url 'update_driver_location' %}";
+    const updateStatusApiUrl = "{% url 'update_driver_status' %}";
+    const acceptAssignmentApiUrl = "{% url 'accept_driver_assignment' %}";
+    const completeAssignmentApiUrl = "{% url 'complete_driver_assignment' %}";
+    const cancelAssignmentApiUrl = "{% url 'cancel_driver_assignment' %}";
+    const requestAssistanceApiUrl = "{% url 'request_driver_assistance' %}";
+    const driverAssignmentSnapshotApiUrl = "{% url 'driver_assignment_snapshot' %}";
+    const driverDispatchCardApiUrl = "{% url 'driver_dispatch_card' %}";
+    const declineAssignmentApiUrl = "{% url 'accept_driver_assignment' %}";
+    const csrfToken = "{{ csrf_token }}";
+    let destinationLat = Number("{{ current_assignment.request.location_latitude|default:'0' }}");
+    let destinationLon = Number("{{ current_assignment.request.location_longitude|default:'0' }}");
+    let assignmentStatus = "{{ current_assignment.request.status|default:'' }}";
+    let currentAssignmentId = Number("{{ current_assignment.id|default:0 }}") || 0;
+    const initialDriverFeedVersion = "{{ driver_feed_version|default:''|escapejs }}";
+    let offerSentAtIso = "{{ current_assignment.offer_sent_at|date:'c'|default:''|escapejs }}";
+    const driverResponseTimeoutSeconds = Number("{{ driver_response_timeout_seconds|default:60 }}");
+    const autoShareStorageKey = 'driverAutoShareLocation';
+    let assignmentSnapshotPollInterval = null;
+    let lastDriverFeedVersion = initialDriverFeedVersion;
+
+    function initJobLocationMap() {
+        const mapContainer = document.getElementById('job-location-map');
+        if (!mapContainer) {
+            return;
+        }
+
+        const lat = destinationLat;
+        const lon = destinationLon;
+        if (!lat && !lon) {
+            return;
+        }
+
+        const map = L.map('job-location-map').setView([lat, lon], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 19,
+        }).addTo(map);
+
+        L.marker([lat, lon]).addTo(map)
+            .bindPopup("{{ current_assignment.request.address|escapejs }}")
+            .openPopup();
+    }
+
+    window.openNavigation = function() {
+        if (!destinationLat && !destinationLon) {
+            alert('Destination coordinates are unavailable for this request.');
+            return;
+        }
+
+        const openMapsWithOrigin = (originLat, originLon) => {
+            const url = `https://www.google.com/maps/dir/?api=1&origin=${originLat},${originLon}&destination=${destinationLat},${destinationLon}&travelmode=driving`;
+            window.open(url, '_blank');
+        };
+
+        const openMapsWithoutOrigin = () => {
+            const url = `https://www.google.com/maps/dir/?api=1&destination=${destinationLat},${destinationLon}&travelmode=driving`;
+            window.open(url, '_blank');
+        };
+
+        if (!navigator.geolocation) {
+            openMapsWithoutOrigin();
+            return;
+        }
+
+        navigator.geolocation.getCurrentPosition(
+            (position) => openMapsWithOrigin(position.coords.latitude, position.coords.longitude),
+            () => openMapsWithoutOrigin(),
+            { enableHighAccuracy: true, timeout: 5000, maximumAge: 30000 }
+        );
+    };
+
+    // ============ TIMER ============
+    function disableDispatchActions() {
+        const acceptButton = document.querySelector('.accept-btn');
+        const declineButton = document.querySelector('.decline-btn');
+        const actions = document.getElementById('dispatch-actions');
+
+        if (acceptButton) {
+            acceptButton.disabled = true;
+            acceptButton.style.opacity = '0.6';
+            acceptButton.textContent = 'Expired';
+        }
+        if (declineButton) {
+            declineButton.disabled = true;
+            declineButton.style.opacity = '0.6';
+        }
+        if (actions) {
+            actions.style.pointerEvents = 'none';
+        }
+    }
+
+    function startOfferCountdown() {
+        const timerElement = document.getElementById('timer');
+        if (!timerElement || assignmentStatus !== 'ASSIGNED' || !offerSentAtIso) {
+            return;
+        }
+
+        const offeredAt = new Date(offerSentAtIso).getTime();
+        if (Number.isNaN(offeredAt)) {
+            timerElement.textContent = '⏱ 1:00';
+            return;
+        }
+
+        const expiryAt = offeredAt + (driverResponseTimeoutSeconds * 1000);
+
+        function updateDisplay() {
+            const remainingMs = expiryAt - Date.now();
+            const remainingSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+            const mins = Math.floor(remainingSeconds / 60);
+            const secs = remainingSeconds % 60;
+            timerElement.textContent = `⏱ ${mins}:${secs.toString().padStart(2, '0')}`;
+
+            if (remainingMs <= 0) {
+                clearInterval(timerInterval);
+                disableDispatchActions();
+                setTimeout(() => window.location.reload(), 1000);
+            }
+        }
+
+        updateDisplay();
+        timerInterval = setInterval(updateDisplay, 1000);
+    }
+
+    // ============ ACCEPT & DECLINE ============
+    function postAssignmentAction(apiUrl, payload) {
+        return fetch(apiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify(payload)
+        })
+        .then(async response => {
+            const data = await response.json();
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || 'Request failed');
+            }
+            return data;
+        });
+    }
+
+    window.acceptAssignment = function(assignmentId) {
+        if (!confirm('Accept this dispatch?')) return;
+
+        postAssignmentAction(acceptAssignmentApiUrl, { assignment_id: assignmentId })
+        .then(data => {
+            localStorage.setItem(autoShareStorageKey, 'true');
+
+            const finishReload = () => window.location.reload();
+            if (!isLocationSharingActive) {
+                startLocationSharing(true).finally(finishReload);
+            } else {
+                finishReload();
+            }
+        })
+        .catch(error => alert('Failed to start job: ' + error.message));
+    };
+
+    window.declineAssignment = function(assignmentId) {
+        if (!confirm('Decline this dispatch?')) return;
+        postAssignmentAction(declineAssignmentApiUrl, { assignment_id: assignmentId, reason: 'Declined by driver' })
+        .then(data => {
+            alert('✓ Dispatch declined');
+            window.location.reload();
+        })
+        .catch(error => alert('Failed to decline dispatch: ' + error.message));
+    };
+
+    window.completeCurrentJob = function(assignmentId) {
+        if (!confirm('Mark this job as completed?')) return;
+        const notes = window.prompt('Add completion notes for the job history (optional):', '');
+        if (notes === null) return;
+
+        postAssignmentAction(completeAssignmentApiUrl, {
+            assignment_id: assignmentId,
+            notes: notes,
+        })
+        .then(() => {
+            localStorage.removeItem(autoShareStorageKey);
+            alert('✓ Job marked as completed');
+            window.location.reload();
+        })
+        .catch(error => alert('Failed to complete job: ' + error.message));
+    };
+
+    window.cancelCurrentJob = function(assignmentId) {
+        if (!confirm('Cancel this job?')) return;
+        const reason = window.prompt('Reason for cancellation (optional):', '');
+        if (reason === null) return;
+
+        postAssignmentAction(cancelAssignmentApiUrl, {
+            assignment_id: assignmentId,
+            reason: reason,
+        })
+        .then(() => {
+            localStorage.removeItem(autoShareStorageKey);
+            alert('✓ Job cancelled');
+            window.location.reload();
+        })
+        .catch(error => alert('Failed to cancel job: ' + error.message));
+    };
+
+    window.requestAssistance = function(assignmentId) {
+        const notes = window.prompt('Describe the assistance you need (optional):', '');
+        if (notes === null) return;
+
+        postAssignmentAction(requestAssistanceApiUrl, {
+            assignment_id: assignmentId,
+            notes: notes,
+        })
+        .then(() => {
+            alert('✓ Assistance request sent');
+            window.location.reload();
+        })
+        .catch(error => alert('Failed to request assistance: ' + error.message));
+    };
+
+    // ============ DRIVER STATUS ============
+    window.toggleDriverStatus = function() {
+        if (currentDriverStatus === 'IN_PROGRESS') {
+            alert('Complete or cancel your current job before changing availability.');
+            return;
+        }
+
+        const btn = document.getElementById('goOnlineBtn');
+        const newStatus = currentDriverStatus === 'AVAILABLE' ? 'OFFLINE' : 'AVAILABLE';
+
+        fetch(updateStatusApiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({
+                status: newStatus,
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                currentDriverStatus = newStatus;
+                
+                if (newStatus === 'AVAILABLE') {
+                    btn.textContent = 'Go Offline';
+                    btn.classList.remove('offline');
+                    btn.classList.add('online');
+                    alert('✓ You are now online and available for dispatches');
+                } else {
+                    btn.textContent = 'Go Online';
+                    btn.classList.remove('online');
+                    btn.classList.add('offline');
+                    localStorage.removeItem(autoShareStorageKey);
+                    stopLocationSharing();
+                    alert('✓ You are now offline');
+                }
+            } else {
+                alert('Error: ' + data.error);
+            }
+        })
+        .catch(error => {
+            console.error('Error updating status:', error);
+            alert('Failed to update status');
+        });
+    };
+
+    // ============ LOCATION SHARING ============
+    function updateLocationUI(isActive, coords = null) {
+        const btn = document.getElementById('toggleLocationBtn');
+        const indicator = document.getElementById('locationIndicator');
+        const status = document.getElementById('locationStatus');
+
+        if (isActive) {
+            btn.textContent = 'Stop Sharing';
+            btn.classList.remove('start');
+            btn.classList.add('stop');
+            indicator.style.background = '#4CAF50';
+            indicator.style.boxShadow = '0 0 8px rgba(76, 175, 80, 0.6)';
+            status.textContent = 'Active - Admin can see your location';
+            status.style.color = '#4CAF50';
+        } else {
+            btn.textContent = 'Start Sharing';
+            btn.classList.add('start');
+            btn.classList.remove('stop');
+            indicator.style.background = '#ccc';
+            indicator.style.boxShadow = 'none';
+            status.textContent = 'Inactive';
+            status.style.color = '#888';
+        }
+    }
+
+    function sendLocation(position) {
+        const lat = position.coords.latitude;
+        const lon = position.coords.longitude;
+
+        return fetch(updateLocationApiUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': csrfToken,
+            },
+            body: JSON.stringify({
+                latitude: lat,
+                longitude: lon,
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (!data.success) {
+                console.error('Failed to update location:', data.error);
+            }
+            return data;
+        })
+        .catch(error => {
+            console.error('Error sending location:', error);
+            throw error;
+        });
+    }
+
+    function handleLocationError(error) {
+        console.error('Geolocation error:', error);
+        let errorMsg = 'Enable device location to share your position';
+        
+        switch(error.code) {
+            case error.PERMISSION_DENIED:
+                errorMsg = 'Location permission denied. Enable in browser settings.';
+                break;
+            case error.POSITION_UNAVAILABLE:
+                errorMsg = 'Location service unavailable';
+                break;
+            case error.TIMEOUT:
+                errorMsg = 'Location request timed out';
+                break;
+        }
+        alert(errorMsg);
+        isLocationSharingActive = false;
+        updateLocationUI(false);
+    }
+
+    function requestAndSendCurrentLocation() {
+        return new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    sendLocation(position).then(resolve).catch(reject);
+                },
+                (error) => {
+                    handleLocationError(error);
+                    reject(error);
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 5000,
+                    maximumAge: 0
+                }
+            );
+        });
+    }
+
+    function startLocationSharing(skipAlertOnFailure = false) {
+        if (!navigator.geolocation) {
+            alert('Geolocation is not supported by your browser.');
+            return Promise.reject(new Error('Geolocation not supported'));
+        }
+
+        isLocationSharingActive = true;
+        localStorage.setItem(autoShareStorageKey, 'true');
+        updateLocationUI(true);
+        
+        return requestAndSendCurrentLocation()
+            .catch((error) => {
+                if (!skipAlertOnFailure) {
+                    throw error;
+                }
+            })
+            .finally(() => {
+                if (locationInterval) {
+                    clearInterval(locationInterval);
+                }
+                locationInterval = setInterval(() => {
+                    if (isLocationSharingActive) {
+                        requestAndSendCurrentLocation().catch(() => {});
+                    }
+                }, 10000);
+            });
+    }
+
+    function stopLocationSharing(preserveAutoShare = false) {
+        isLocationSharingActive = false;
+        if (!preserveAutoShare) {
+            localStorage.removeItem(autoShareStorageKey);
+        }
+        if (locationInterval) {
+            clearInterval(locationInterval);
+        }
+        updateLocationUI(false);
+    }
+
+    window.toggleLocationSharing = function() {
+        if (isLocationSharingActive) {
+            stopLocationSharing();
+        } else {
+            startLocationSharing().catch(() => {});
+        }
+    };
+
+    function playDispatchAlert() {
+        try {
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const notes = [880, 1100, 880, 1100];
+            let time = ctx.currentTime;
+            notes.forEach((freq, i) => {
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.type = 'sine';
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0, time);
+                gain.gain.linearRampToValueAtTime(0.4, time + 0.02);
+                gain.gain.linearRampToValueAtTime(0, time + 0.18);
+                osc.start(time);
+                osc.stop(time + 0.2);
+                time += 0.22;
+            });
+        } catch (e) {}
+    }
+
+    let isRefreshing = false;
+
+    function refreshDispatchCard(snapshotData) {
+        if (isRefreshing) return;
+        isRefreshing = true;
+
+        fetch(driverDispatchCardApiUrl, {
+            cache: 'no-store',
+            headers: { 'Accept': 'text/html' },
+        })
+        .then(r => {
+            if (!r.ok) throw new Error('Card fetch failed');
+            return r.text();
+        })
+        .then(html => {
+            const isNewAssignment = !currentAssignmentId && snapshotData.has_assignment;
+            document.getElementById('dispatch-area').innerHTML = html;
+
+            // Alert driver when a new job lands
+            if (isNewAssignment) {
+                playDispatchAlert();
+            }
+
+            // Update state variables so timer, map and polling stay in sync
+            currentAssignmentId = Number(snapshotData.assignment_id || 0);
+            assignmentStatus = snapshotData.request_status || '';
+            destinationLat = Number(snapshotData.destination_lat || 0);
+            destinationLon = Number(snapshotData.destination_lon || 0);
+            offerSentAtIso = snapshotData.offer_sent_at || '';
+            lastDriverFeedVersion = snapshotData.feed_version || '';
+
+            // Update header status button if driver status changed
+            const newDriverStatus = snapshotData.driver_status || currentDriverStatus;
+            if (newDriverStatus !== currentDriverStatus) {
+                currentDriverStatus = newDriverStatus;
+                const btn = document.getElementById('goOnlineBtn');
+                if (btn) {
+                    btn.className = 'go-online-btn ' + (
+                        newDriverStatus === 'AVAILABLE' ? 'online' :
+                        newDriverStatus === 'IN_PROGRESS' ? 'busy' : 'offline'
+                    );
+                    btn.textContent = newDriverStatus === 'AVAILABLE' ? 'Go Offline' :
+                                      newDriverStatus === 'IN_PROGRESS' ? 'On Job' : 'Go Online';
+                    btn.disabled = newDriverStatus === 'IN_PROGRESS';
+                }
+            }
+
+            // Restore location sharing button state if sharing was already active
+            if (isLocationSharingActive) {
+                updateLocationUI(true);
+            }
+
+            // Restart offer countdown and job map with fresh state
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            startOfferCountdown();
+            initJobLocationMap();
+        })
+        .catch(() => window.location.reload())
+        .finally(() => { isRefreshing = false; });
+    }
+
+    function pollDriverAssignmentSnapshot() {
+        fetch(driverAssignmentSnapshotApiUrl, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/json',
+            },
+            cache: 'no-store',
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Snapshot request failed');
+            }
+            return response.json();
+        })
+        .then(data => {
+            const snapshotHasAssignment = Boolean(data.has_assignment);
+            const snapshotAssignmentId = Number(data.assignment_id || 0);
+            const snapshotStatus = data.request_status || '';
+            const snapshotFeedVersion = data.feed_version || '';
+
+            if (snapshotFeedVersion && lastDriverFeedVersion && snapshotFeedVersion !== lastDriverFeedVersion) {
+                refreshDispatchCard(data);
+                return;
+            }
+            if (snapshotFeedVersion && !lastDriverFeedVersion) {
+                lastDriverFeedVersion = snapshotFeedVersion;
+            }
+
+            // No assignment on page but new offer/active job appeared.
+            if (!currentAssignmentId && snapshotHasAssignment) {
+                refreshDispatchCard(data);
+                return;
+            }
+
+            // Assignment disappeared from feed (completed/cancelled/expired elsewhere).
+            if (currentAssignmentId && !snapshotHasAssignment) {
+                refreshDispatchCard(data);
+                return;
+            }
+
+            // Assignment changed (new offer, reroute, timeout rollover) or status changed.
+            if (currentAssignmentId && snapshotAssignmentId && snapshotAssignmentId !== currentAssignmentId) {
+                refreshDispatchCard(data);
+                return;
+            }
+            if (currentAssignmentId && assignmentStatus && snapshotStatus && snapshotStatus !== assignmentStatus) {
+                refreshDispatchCard(data);
+            }
+        })
+        .catch(() => {});
+    }
+
+    function startAssignmentSnapshotPolling() {
+        if (assignmentSnapshotPollInterval) {
+            clearInterval(assignmentSnapshotPollInterval);
+        }
+        pollDriverAssignmentSnapshot();
+        assignmentSnapshotPollInterval = setInterval(pollDriverAssignmentSnapshot, 5000);
+    }
+
+    // Stop sharing when leaving page
+    window.addEventListener('beforeunload', function() {
+        stopLocationSharing(true);
+        if (assignmentSnapshotPollInterval) {
+            clearInterval(assignmentSnapshotPollInterval);
+        }
+    });
+    startOfferCountdown();
+    initJobLocationMap();
+    startAssignmentSnapshotPolling();
+
+    if (assignmentStatus === 'IN-PROGRESS' && localStorage.getItem(autoShareStorageKey) === 'true') {
+        startLocationSharing(true).catch(() => {});
+    }
+})();
+</script>
+{% endblock %}

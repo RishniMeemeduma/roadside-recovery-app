@@ -1,0 +1,156 @@
+{% extends 'portal.html' %}
+{% block title %}User Requests{% endblock %}
+
+{% block content %}
+<div class="admin-wrap">
+    <div class="admin-page-header">
+        <div>
+            <h1 class="title">Pending User Requests</h1>
+            <div class="subtitle">Review and approve new driver and member registrations.</div>
+        </div>
+    </div>
+
+    {% if messages %}
+    <div>
+        {% for message in messages %}
+            <div class="admin-alert {% if message.tags == 'success' %}admin-alert-success{% else %}admin-alert-error{% endif %}">
+                {{ message }}
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="admin-card">
+        <div style="overflow-x:auto;">
+            <table class="admin-table">
+                <thead>
+                    <tr>
+                        <th>User ID</th>
+                        <th>Username</th>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th>Status</th>
+                        <th>Joined</th>
+                        <th style="min-width:260px;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in pending_requests %}
+                    <tr>
+                        <td style="font-weight:600; font-size:0.78rem; color:var(--gray);">#{{ req.uuid }}</td>
+                        <td style="font-weight:600;">{{ req.username }}</td>
+                        <td>{{ req.email }}</td>
+                        <td><span class="pill pill-muted">{{ req.role }}</span></td>
+                        <td><span class="pill pill-warn">{{ req.status }}</span></td>
+                        <td>{{ req.date_joined|date:'Y-m-d H:i' }}</td>
+                        <td>
+                            <div class="admin-actions">
+                                <button type="button" class="btn-admin btn-admin-ghost btn-admin-sm" onclick="openDriverRequestModal(this)"
+                                        data-username="{{ req.username }}"
+                                        data-email="{{ req.email }}"
+                                        data-role="{{ req.role }}"
+                                        data-status="{{ req.status }}"
+                                        data-joined="{{ req.date_joined|date:'Y-m-d H:i' }}"
+                                        data-first-name="{{ req.profile.first_name|default:'' }}"
+                                        data-last-name="{{ req.profile.last_name|default:'' }}"
+                                        data-phone="{{ req.profile.phone|default:'' }}"
+                                        data-address="{{ req.profile.address|default:'' }}"
+                                        data-membership="{{ req.profile.membership_tier|default:'' }}"
+                                        data-license-number="{{ req.driver.license_number|default:'' }}"
+                                        data-vehicle-type="{{ req.driver.vehicle_type|default:'' }}"
+                                        data-vehicle-registration="{{ req.driver.vehicle_registration|default:'' }}"
+                                        data-qualification="{{ req.driver.qualification|join:', '|default:'' }}"
+                                        data-specialization="{{ req.driver.specialization|join:', '|default:'' }}">
+                                    Details
+                                </button>
+                                <form method="POST" action="{% url 'admin_handle_request' req.uuid %}">
+                                    {% csrf_token %}
+                                    <button type="submit" name="action" value="accept" class="btn-admin btn-admin-success btn-admin-sm">Accept</button>
+                                    <button type="submit" name="action" value="decline" class="btn-admin btn-admin-danger btn-admin-sm"
+                                            onclick="return confirm('Decline this request?')">Decline</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="7" class="empty-cell">
+                            <div class="admin-empty">
+                                <div class="admin-empty-title">No pending requests</div>
+                                <div>All registrations have been reviewed.</div>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div id="request-details-modal" class="admin-modal-backdrop" role="dialog" aria-labelledby="request-modal-title" aria-modal="true">
+    <div class="admin-modal-card">
+        <button class="close-btn" onclick="closeDriverRequestModal()" aria-label="Close modal">&times;</button>
+        <h3 id="request-modal-title">Registration Details</h3>
+        <dl style="display:grid; grid-template-columns: 130px 1fr; gap:8px 12px; font-size:0.88rem; margin:0;">
+            <dt style="color:var(--gray); font-weight:600;">Username</dt><dd id="modal-username" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Email</dt><dd id="modal-email" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Role</dt><dd id="modal-role" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Status</dt><dd id="modal-status" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Joined</dt><dd id="modal-joined" style="margin:0;"></dd>
+        </dl>
+        <hr style="border:none; border-top:1px solid var(--border); margin:16px 0;">
+        <h4 style="font-size:0.82rem; text-transform:uppercase; color:var(--gray); letter-spacing:0.05em; margin:0 0 10px 0;">Profile</h4>
+        <dl style="display:grid; grid-template-columns: 130px 1fr; gap:8px 12px; font-size:0.88rem; margin:0;">
+            <dt style="color:var(--gray); font-weight:600;">Name</dt><dd id="modal-profile-name" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Phone</dt><dd id="modal-profile-phone" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Address</dt><dd id="modal-profile-address" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Membership</dt><dd id="modal-profile-membership" style="margin:0;"></dd>
+        </dl>
+        <hr style="border:none; border-top:1px solid var(--border); margin:16px 0;">
+        <h4 style="font-size:0.82rem; text-transform:uppercase; color:var(--gray); letter-spacing:0.05em; margin:0 0 10px 0;">Driver Data</h4>
+        <dl style="display:grid; grid-template-columns: 130px 1fr; gap:8px 12px; font-size:0.88rem; margin:0;">
+            <dt style="color:var(--gray); font-weight:600;">Licence No</dt><dd id="modal-driver-license" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Vehicle</dt><dd id="modal-driver-vehicle-type" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Registration</dt><dd id="modal-driver-registration" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Qualifications</dt><dd id="modal-driver-qualification" style="margin:0;"></dd>
+            <dt style="color:var(--gray); font-weight:600;">Specialisation</dt><dd id="modal-driver-specialization" style="margin:0;"></dd>
+        </dl>
+    </div>
+</div>
+
+<script>
+function openDriverRequestModal(button) {
+    document.getElementById('modal-username').innerText = button.dataset.username || 'N/A';
+    document.getElementById('modal-email').innerText = button.dataset.email || 'N/A';
+    document.getElementById('modal-role').innerText = button.dataset.role || 'N/A';
+    document.getElementById('modal-status').innerText = button.dataset.status || 'N/A';
+    document.getElementById('modal-joined').innerText = button.dataset.joined || 'N/A';
+
+    document.getElementById('modal-profile-name').innerText = [button.dataset.firstName, button.dataset.lastName].filter(Boolean).join(' ') || 'N/A';
+    document.getElementById('modal-profile-phone').innerText = button.dataset.phone || 'N/A';
+    document.getElementById('modal-profile-address').innerText = button.dataset.address || 'N/A';
+    document.getElementById('modal-profile-membership').innerText = button.dataset.membership || 'N/A';
+
+    document.getElementById('modal-driver-license').innerText = button.dataset.licenseNumber || 'N/A';
+    document.getElementById('modal-driver-vehicle-type').innerText = button.dataset.vehicleType || 'N/A';
+    document.getElementById('modal-driver-registration').innerText = button.dataset.vehicleRegistration || 'N/A';
+    document.getElementById('modal-driver-qualification').innerText = button.dataset.qualification || 'N/A';
+    document.getElementById('modal-driver-specialization').innerText = button.dataset.specialization || 'N/A';
+
+    document.getElementById('request-details-modal').classList.add('open');
+}
+
+function closeDriverRequestModal() {
+    document.getElementById('request-details-modal').classList.remove('open');
+}
+
+window.addEventListener('click', function(event) {
+    const modal = document.getElementById('request-details-modal');
+    if (event.target === modal) {
+        closeDriverRequestModal();
+    }
+});
+</script>
+
+{% endblock %}

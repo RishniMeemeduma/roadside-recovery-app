@@ -2,41 +2,733 @@
 {% block title %}Recovery Requests{% endblock %}
 
 {% block content %}
-<h2 style="font-size:22px; font-weight:700; color:#1a1a2e; margin-bottom:20px;">Recovery Requests</h2>
-<div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:24px;">
-    <table style="width:100%; border-collapse:collapse;">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+<style>
+    tr:target {
+        outline: 2px solid #fa8c16;
+        outline-offset: -2px;
+        background: #fff7e6;
+    }
+
+    .request-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .request-meta {
+        display: grid;
+        grid-template-columns: 140px 1fr;
+        gap: 8px 12px;
+        font-size: 14px;
+    }
+
+    .request-meta dt {
+        color: #666;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .request-meta dd {
+        margin: 0;
+        color: #1a1a2e;
+    }
+
+    #driver-map {
+        width: 100%;
+        height: 400px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        border: 1px solid #e0e0e0;
+    }
+
+    .driver-info-popup {
+        font-size: 12px;
+    }
+
+    .driver-info-popup strong {
+        display: block;
+        margin-bottom: 4px;
+        color: #1a1a2e;
+    }
+
+    .detail-toggle {
+        border: none;
+        border-radius: 6px;
+        background: #f0f0f0;
+        color: #555;
+        padding: 6px 10px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+    }
+
+    .detail-toggle:hover {
+        background: #e0e0e0;
+    }
+
+    .detail-row td {
+        padding: 0 !important;
+        border-bottom: 1px solid #eee;
+    }
+
+    .detail-panel {
+        display: none;
+        padding: 20px 24px;
+        background: #fafafa;
+    }
+
+    .detail-panel.open {
+        display: block;
+    }
+
+    .detail-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 20px;
+    }
+
+    .detail-section h4 {
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: uppercase;
+        color: #888;
+        margin: 0 0 10px 0;
+        letter-spacing: 0.5px;
+    }
+
+    .detail-section dl {
+        display: grid;
+        grid-template-columns: 130px 1fr;
+        gap: 6px 12px;
+        font-size: 13px;
+        margin: 0;
+    }
+
+    .detail-section dt {
+        color: #888;
+        font-weight: 600;
+        margin: 0;
+    }
+
+    .detail-section dd {
+        color: #1a1a2e;
+        margin: 0;
+    }
+
+    .assignment-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        font-size: 13px;
+    }
+
+    .assignment-list li {
+        padding: 6px 0;
+        border-bottom: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .assignment-list li:last-child {
+        border-bottom: none;
+    }
+
+    .response-badge {
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 700;
+    }
+
+    .response-badge.accepted { background: #e8f5e9; color: #2e7d32; }
+    .response-badge.declined { background: #ffebee; color: #c62828; }
+
+    .search-panel {
+        background: #fff;
+        border: 1px solid #e0e0e0;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 20px;
+    }
+
+    .search-panel .search-row {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        margin-bottom: 12px;
+    }
+
+    .search-panel .search-row:last-child {
+        margin-bottom: 0;
+    }
+
+    .search-field {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        flex: 1;
+        min-width: 140px;
+    }
+
+    .search-field label {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        color: #888;
+        letter-spacing: 0.3px;
+    }
+
+    .search-field input,
+    .search-field select {
+        padding: 8px 12px;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        font-size: 13px;
+    }
+
+    .search-field input[type="search"] {
+        flex: 2;
+        min-width: 200px;
+    }
+
+    .search-actions {
+        display: flex;
+        gap: 8px;
+        align-items: flex-end;
+    }
+
+    .search-btn {
+        padding: 8px 20px;
+        border: none;
+        border-radius: 8px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+
+    .search-btn.primary { background: #1976d2; color: #fff; }
+    .search-btn.secondary { background: #f0f0f0; color: #555; }
+    .search-btn.map-btn { background: #e8f5e9; color: #2e7d32; padding: 8px 12px; }
+
+    .result-count {
+        font-size: 14px;
+        font-weight: 600;
+        color: #1a1a2e;
+        padding: 8px 0;
+    }
+
+    .pagination-nav {
+        display: flex;
+        justify-content: center;
+        gap: 4px;
+        padding: 16px 0;
+    }
+
+    .pagination-nav a,
+    .pagination-nav span {
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        text-decoration: none;
+        border: 1px solid #e0e0e0;
+        color: #555;
+    }
+
+    .pagination-nav span.active {
+        background: #1976d2;
+        color: #fff;
+        border-color: #1976d2;
+    }
+
+    .pagination-nav a:hover {
+        background: #f0f0f0;
+    }
+    .response-badge.timeout { background: #fff3e0; color: #e65100; }
+
+    @media (max-width: 768px) {
+        .detail-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+<div class="admin-wrap">
+<div class="admin-page-header">
+    <div>
+        <h1 class="title">Recovery Requests</h1>
+        <div class="subtitle">Live operations view — map, search and dispatch.</div>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header"><h3>Driver Locations (Real-time)</h3></div>
+    <div id="driver-map"></div>
+</div>
+
+<!-- Search & Filter Panel (CR-001) -->
+<form method="get" action="" id="search-form" class="search-panel">
+    <div class="search-row">
+        <div class="search-field" style="flex:2; min-width:200px;">
+            <label>Search</label>
+            <input type="search" name="q" value="{{ applied_filters.q|default:'' }}" placeholder="Member, driver, address, issue...">
+        </div>
+        <div class="search-field">
+            <label>Date From</label>
+            <input type="date" name="date_from" value="{{ applied_filters.date_from|default:'' }}">
+        </div>
+        <div class="search-field">
+            <label>Date To</label>
+            <input type="date" name="date_to" value="{{ applied_filters.date_to|default:'' }}">
+        </div>
+    </div>
+    <div class="search-row">
+        <div class="search-field">
+            <label>Status</label>
+            <select name="status">
+                <option value="">All Statuses</option>
+                <option value="PENDING" {% if applied_filters.status == 'PENDING' %}selected{% endif %}>Pending</option>
+                <option value="ASSIGNED" {% if applied_filters.status == 'ASSIGNED' %}selected{% endif %}>Dispatched</option>
+                <option value="IN-PROGRESS" {% if applied_filters.status == 'IN-PROGRESS' %}selected{% endif %}>In Progress</option>
+                <option value="COMPLETED" {% if applied_filters.status == 'COMPLETED' %}selected{% endif %}>Completed</option>
+                <option value="CANCELLED" {% if applied_filters.status == 'CANCELLED' %}selected{% endif %}>Cancelled</option>
+            </select>
+        </div>
+        <div class="search-field">
+            <label>Service</label>
+            <select name="service">
+                <option value="">All Services</option>
+                {% for svc in services %}
+                <option value="{{ svc.id }}" {% if applied_filters.service == svc.id|stringformat:"d" %}selected{% endif %}>{{ svc.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="search-field">
+            <label>Priority</label>
+            <select name="priority">
+                <option value="">All Priorities</option>
+                <option value="EMERGENCY" {% if applied_filters.priority == 'EMERGENCY' %}selected{% endif %}>Emergency</option>
+                <option value="MEDIUM" {% if applied_filters.priority == 'MEDIUM' %}selected{% endif %}>Medium</option>
+                <option value="NORMAL" {% if applied_filters.priority == 'NORMAL' %}selected{% endif %}>Normal</option>
+            </select>
+        </div>
+        <div class="search-field">
+            <label>Sort By</label>
+            <select name="sort">
+                <option value="date_desc" {% if applied_filters.sort == 'date_desc' %}selected{% endif %}>Newest First</option>
+                <option value="date_asc" {% if applied_filters.sort == 'date_asc' %}selected{% endif %}>Oldest First</option>
+                <option value="priority_desc" {% if applied_filters.sort == 'priority_desc' %}selected{% endif %}>Priority (High to Low)</option>
+                <option value="priority_asc" {% if applied_filters.sort == 'priority_asc' %}selected{% endif %}>Priority (Low to High)</option>
+                <option value="distance" {% if applied_filters.sort == 'distance' %}selected{% endif %}>Nearest First</option>
+            </select>
+        </div>
+    </div>
+    <div class="search-row">
+        <div class="search-field" style="min-width:100px; flex:0;">
+            <label>Latitude</label>
+            <input type="number" step="any" name="lat" value="{{ applied_filters.lat|default:'' }}" placeholder="e.g. 53.48">
+        </div>
+        <div class="search-field" style="min-width:100px; flex:0;">
+            <label>Longitude</label>
+            <input type="number" step="any" name="lng" value="{{ applied_filters.lng|default:'' }}" placeholder="e.g. -2.24">
+        </div>
+        <div class="search-field" style="min-width:100px; flex:0;">
+            <label>Radius (miles)</label>
+            <input type="number" step="any" name="radius" value="{{ applied_filters.radius|default:'' }}" placeholder="e.g. 10">
+        </div>
+        <div class="search-actions">
+            <button type="button" class="search-btn map-btn" id="use-map-center" title="Use current map center">Use Map Centre</button>
+            <button type="submit" class="search-btn primary">Search</button>
+            <a href="{% url 'admin_recovery_requests' %}" class="search-btn secondary">Clear</a>
+        </div>
+    </div>
+    <div class="result-count"><span id="result-count">{{ total_count }}</span> result{{ total_count|pluralize }}</div>
+</form>
+
+<div class="admin-card">
+    <div style="overflow-x:auto;">
+    <table class="admin-table">
         <thead>
-            <tr style="text-align:left; color:#888; font-size:12px; text-transform:uppercase;">
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">ID</th>
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Member</th>
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Service</th>
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Status</th>
-                <th style="padding:12px 16px; border-bottom:1px solid #eee;">Priority</th>
+            <tr>
+                <th style="width:70px;">ID</th>
+                <th>Member</th>
+                <th>Service</th>
+                <th>Status</th>
+                <th>Priority</th>
+                <th style="min-width:200px;">Actions</th>
             </tr>
         </thead>
         <tbody>
             {% for req in requests %}
-            <tr>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">#{{ req.id }}</td>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.member.username }}</td>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.service.name }}</td>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">
+            <tr id="request-{{ req.id }}" data-status="{{ req.status }}">
+                <td style="font-weight:600; color:var(--gray);">#{{ req.id }}</td>
+                <td style="font-weight:600;">{{ req.member.username }}</td>
+                <td>{{ req.service.name }}</td>
+                <td>
+                    <span id="status-badge-{{ req.id }}">
                     {% if req.status == 'PENDING' %}
-                        <span style="background:#fff3e0; color:#FF9800; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">PENDING</span>
-                    {% elif req.status == 'IN_PROGRESS' %}
-                        <span style="background:#e3f2fd; color:#2196F3; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">IN PROGRESS</span>
+                        <span class="pill pill-warn">Pending</span>
+                    {% elif req.status == 'ASSIGNED' %}
+                        <span class="pill pill-purple">Dispatched</span>
+                    {% elif req.status == 'IN-PROGRESS' %}
+                        <span class="pill pill-info">In Progress</span>
                     {% elif req.status == 'COMPLETED' %}
-                        <span style="background:#e8f5e9; color:#4CAF50; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">COMPLETED</span>
+                        <span class="pill pill-success">Completed</span>
+                    {% elif req.status == 'CANCELLED' %}
+                        <span class="pill pill-danger">Cancelled</span>
                     {% else %}
-                        <span style="background:#f5f5f5; color:#888; padding:4px 12px; border-radius:4px; font-size:12px; font-weight:600;">{{ req.status }}</span>
+                        <span class="pill pill-muted">{{ req.status }}</span>
+                    {% endif %}
+                    </span>
+                </td>
+                <td>
+                    {% if req.priority == 'EMERGENCY' %}
+                        <span class="pill pill-danger">Emergency</span>
+                    {% elif req.priority == 'MEDIUM' %}
+                        <span class="pill pill-warn">Medium</span>
+                    {% else %}
+                        <span class="pill pill-muted">Normal</span>
                     {% endif %}
                 </td>
-                <td style="padding:12px 16px; border-bottom:1px solid #f5f5f5;">{{ req.priority }}</td>
+                <td id="actions-{{ req.id }}">
+                    <div class="request-actions admin-actions">
+                        <button type="button" class="btn-admin btn-admin-ghost btn-admin-sm" onclick="toggleDetail({{ req.id }})">View</button>
+                        {% if req.status == 'PENDING' %}
+                        <button type="button" class="btn-admin btn-admin-primary btn-admin-sm" data-bs-toggle="modal" data-bs-target="#assignRequestModal{{ req.id }}">Assign</button>
+                        <form method="post" action="{% url 'decline_recovery_request' req.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-admin btn-admin-danger btn-admin-sm">Decline</button>
+                        </form>
+                        {% elif req.status == 'ASSIGNED' %}
+                        <form method="post" action="{% url 'decline_recovery_request' req.id %}">
+                            {% csrf_token %}
+                            <button type="submit" class="btn-admin btn-admin-danger btn-admin-sm">Decline</button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </td>
+            </tr>
+            <tr class="detail-row">
+                <td colspan="6">
+                    <div class="detail-panel" id="detail-{{ req.id }}">
+                        <div class="detail-grid">
+                            <div class="detail-section">
+                                <h4>Request Info</h4>
+                                <dl>
+                                    <dt>Vehicle</dt>
+                                    <dd>{{ req.vehicle_details }}</dd>
+                                    <dt>Place</dt>
+                                    <dd>{{ req.place|default:'-' }}</dd>
+                                    <dt>Address</dt>
+                                    <dd>{{ req.address }}</dd>
+                                    <dt>Coordinates</dt>
+                                    <dd>{{ req.location_latitude }}, {{ req.location_longitude }}</dd>
+                                    <dt>Issue</dt>
+                                    <dd>{{ req.issue_description }}</dd>
+                                    <dt>Created</dt>
+                                    <dd>{{ req.created_at|date:'M j, Y g:i A' }}</dd>
+                                    <dt>Updated</dt>
+                                    <dd>{{ req.updated_at|date:'M j, Y g:i A' }}</dd>
+                                </dl>
+                            </div>
+                            <div class="detail-section">
+                                <h4>Assignment History</h4>
+                                {% if req.assignments.all %}
+                                <ul class="assignment-list">
+                                    {% for a in req.assignments.all %}
+                                    <li>
+                                        <span>
+                                            <strong>{{ a.driver.user.username }}</strong>
+                                            ({{ a.driver.vehicle_type }})
+                                            <br><small style="color:#888;">Sent {{ a.offer_sent_at|date:'g:i A' }}{% if a.driver_responded_at %} &middot; Responded {{ a.driver_responded_at|date:'g:i A' }}{% endif %}</small>
+                                        </span>
+                                        <span class="response-badge {% if a.driver_response == 'ACCEPTED' %}accepted{% elif a.driver_response == 'DECLINED' %}declined{% else %}timeout{% endif %}">
+                                            {{ a.driver_response }}
+                                        </span>
+                                    </li>
+                                    {% endfor %}
+                                </ul>
+                                {% else %}
+                                <p style="font-size:13px; color:#888; margin:0;">No drivers assigned yet.</p>
+                                {% endif %}
+
+                                {% if req.job_history %}
+                                <h4 style="margin-top:16px;">Job Completion</h4>
+                                <dl>
+                                    <dt>Duration</dt>
+                                    <dd>{{ req.job_history.completion_time_minutes }} minutes</dd>
+                                    {% if req.job_history.member_rating %}
+                                    <dt>Rating</dt>
+                                    <dd>{{ req.job_history.member_rating }} / 5</dd>
+                                    {% endif %}
+                                    {% if req.job_history.driver_notes %}
+                                    <dt>Driver Notes</dt>
+                                    <dd>{{ req.job_history.driver_notes }}</dd>
+                                    {% endif %}
+                                </dl>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </td>
             </tr>
             {% empty %}
-            <tr><td colspan="5" style="padding:20px; text-align:center; color:#888;">No recovery requests found.</td></tr>
+            <tr><td colspan="6" class="empty-cell">
+                <div class="admin-empty">
+                    <div class="admin-empty-title">No recovery requests found</div>
+                    <div>Try adjusting your filters or clear the search.</div>
+                </div>
+            </td></tr>
             {% endfor %}
         </tbody>
     </table>
+    </div>
+
+    <!-- Pagination (FR-S07) -->
+    {% if page_obj.has_other_pages %}
+    <div class="pagination-nav">
+        {% if page_obj.has_previous %}
+        <a href="?{{ filter_querystring }}&page={{ page_obj.previous_page_number }}">Previous</a>
+        {% endif %}
+        {% for num in page_obj.paginator.page_range %}
+            {% if page_obj.number == num %}
+            <span class="active">{{ num }}</span>
+            {% elif num > page_obj.number|add:"-3" and num < page_obj.number|add:"3" %}
+            <a href="?{{ filter_querystring }}&page={{ num }}">{{ num }}</a>
+            {% endif %}
+        {% endfor %}
+        {% if page_obj.has_next %}
+        <a href="?{{ filter_querystring }}&page={{ page_obj.next_page_number }}">Next</a>
+        {% endif %}
+    </div>
+    {% endif %}
 </div>
+</div>
+
+{% for req in requests %}
+    {% if req.status == 'PENDING' %}
+    <div class="modal fade" id="assignRequestModal{{ req.id }}" tabindex="-1" aria-labelledby="assignRequestModalLabel{{ req.id }}" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="assignRequestModalLabel{{ req.id }}">Assign Request #{{ req.id }}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="post" action="{% url 'assign_recovery_request' req.id %}">
+                    <div class="modal-body">
+                        {% csrf_token %}
+                        <div class="mb-4">
+                            <h6 style="font-size:15px; font-weight:700; color:#1a1a2e; margin-bottom:12px;">Recovery Request Details</h6>
+                            <dl class="request-meta">
+                                <dt>Member</dt>
+                                <dd>{{ req.member.username }}</dd>
+                                <dt>Service</dt>
+                                <dd>{{ req.service.name }}</dd>
+                                <dt>Priority</dt>
+                                <dd>{{ req.priority }}</dd>
+                                <dt>Place</dt>
+                                <dd>{{ req.place|default:'-' }}</dd>
+                                <dt>Vehicle</dt>
+                                <dd>{{ req.vehicle_details }}</dd>
+                                <dt>Location</dt>
+                                <dd>{{ req.address }}</dd>
+                                <dt>Coordinates</dt>
+                                <dd>{{ req.location_latitude }}, {{ req.location_longitude }}</dd>
+                                <dt>Issue</dt>
+                                <dd>{{ req.issue_description }}</dd>
+                                <dt>Created</dt>
+                                <dd>{{ req.created_at|date:'M j, g:i A' }}</dd>
+                            </dl>
+                        </div>
+                        <div>
+                            <label for="driverSelect{{ req.id }}" class="form-label" style="font-weight:600; color:#1a1a2e;">Assign Driver</label>
+                            <select id="driverSelect{{ req.id }}" name="driver_id" class="form-select" required>
+                                <option value="">Choose an available driver</option>
+                                {% for driver in available_drivers %}
+                                <option value="{{ driver.id }}">{{ driver.user.username }} ({{ driver.vehicle_type }})</option>
+                                {% endfor %}
+                            </select>
+                            {% if not available_drivers %}
+                            <div style="margin-top:8px; font-size:13px; color:#888;">No available drivers right now.</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-primary" {% if not available_drivers %}disabled{% endif %}>Assign Driver</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+{% endfor %}
+
+<script>
+function toggleDetail(reqId) {
+    const panel = document.getElementById('detail-' + reqId);
+    if (panel) panel.classList.toggle('open');
+}
+</script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(function() {
+    let markers = {};
+    const apiUrl = "{% url 'get_driver_locations' %}";
+
+    function initMap() {
+        // Initialize map centered on UK (default)
+        window.adminMap = L.map('driver-map').setView([54.5973, -3.4360], 6);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors',
+            maxZoom: 18,
+        }).addTo(window.adminMap);
+    }
+
+    function updateDriverLocations() {
+        fetch(apiUrl)
+            .then(response => response.json())
+            .then(data => {
+                // Clear old markers
+                Object.keys(markers).forEach(driverId => {
+                    window.adminMap.removeLayer(markers[driverId]);
+                });
+                markers = {};
+
+                // Add new markers for each driver
+                data.drivers.forEach(driver => {
+                    const marker = L.marker([driver.latitude, driver.longitude], {
+                        title: driver.name
+                    }).addTo(window.adminMap);
+
+                    const popupContent = `<div class="driver-info-popup">
+                        <strong>${driver.name}</strong>
+                        Vehicle: ${driver.vehicle_registration}<br>
+                        Type: ${driver.vehicle_type}<br>
+                        <small>Lat: ${driver.latitude.toFixed(4)}, Lon: ${driver.longitude.toFixed(4)}</small>
+                    </div>`;
+
+                    marker.bindPopup(popupContent);
+                    markers[driver.id] = marker;
+                });
+
+                // Fit map to show all drivers
+                if (data.drivers.length > 0) {
+                    const group = new L.featureGroup(Object.values(markers));
+                    window.adminMap.fitBounds(group.getBounds().pad(0.1));
+                }
+            })
+            .catch(error => console.error('Error fetching driver locations:', error));
+    }
+
+    const requestsStatusApiUrl = "{% url 'admin_requests_status' %}";
+
+    const statusBadgeHtml = {
+        'PENDING':     '<span class="pill pill-warn">Pending</span>',
+        'ASSIGNED':    '<span class="pill pill-purple">Dispatched</span>',
+        'IN-PROGRESS': '<span class="pill pill-info">In Progress</span>',
+        'COMPLETED':   '<span class="pill pill-success">Completed</span>',
+        'CANCELLED':   '<span class="pill pill-danger">Cancelled</span>',
+    };
+
+    function actionsHtmlForStatus(status, reqId) {
+        if (status === 'PENDING') {
+            // Modal may not be in DOM if row was ASSIGNED on page load — show refresh prompt
+            const modal = document.getElementById('assignRequestModal' + reqId);
+            const assignBtn = modal
+                ? `<button type="button" class="btn-admin btn-admin-primary btn-admin-sm" data-bs-toggle="modal" data-bs-target="#assignRequestModal${reqId}">Assign</button>`
+                : `<a href="" class="btn-admin btn-admin-primary btn-admin-sm">Refresh to Assign</a>`;
+            return `<div class="request-actions admin-actions">
+                ${assignBtn}
+                <form method="post" action="/dashboard/recovery-requests/${reqId}/decline/">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                    <button type="submit" class="btn-admin btn-admin-danger btn-admin-sm">Decline</button>
+                </form>
+            </div>`;
+        }
+        if (status === 'ASSIGNED') {
+            return `<form method="post" action="/dashboard/recovery-requests/${reqId}/decline/">
+                <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+                <button type="submit" class="btn-admin btn-admin-danger btn-admin-sm">Decline</button>
+            </form>`;
+        }
+        return '<span style="font-size:0.82rem; color:var(--gray);">No actions</span>';
+    }
+
+    function pollRequestsStatus() {
+        fetch(requestsStatusApiUrl, { cache: 'no-store' })
+            .then(r => r.json())
+            .then(data => {
+                data.requests.forEach(req => {
+                    const row = document.getElementById('request-' + req.id);
+                    if (!row) return;
+                    const prevStatus = row.dataset.status;
+                    if (prevStatus === req.status) return;
+
+                    // Update badge
+                    const badge = document.getElementById('status-badge-' + req.id);
+                    if (badge) badge.innerHTML = statusBadgeHtml[req.status] || `<span class="pill pill-muted">${req.status}</span>`;
+
+                    // Update actions cell
+                    const actions = document.getElementById('actions-' + req.id);
+                    if (actions) actions.innerHTML = actionsHtmlForStatus(req.status, req.id);
+
+                    row.dataset.status = req.status;
+                });
+            })
+            .catch(() => {});
+    }
+
+    // FR-S06: Real-time result count update
+    const searchApiUrl = "{% url 'admin_recovery_requests_api' %}";
+    let debounceTimer;
+
+    function updateResultCount() {
+        const form = document.getElementById('search-form');
+        const params = new URLSearchParams(new FormData(form));
+        params.set('page', '1');
+        fetch(searchApiUrl + '?' + params.toString())
+            .then(r => r.json())
+            .then(data => {
+                const el = document.getElementById('result-count');
+                if (el) el.textContent = data.total_count;
+            })
+            .catch(() => {});
+    }
+
+    // Use Map Centre button
+    document.getElementById('use-map-center').addEventListener('click', function() {
+        if (window.adminMap) {
+            const c = window.adminMap.getCenter();
+            document.querySelector('[name="lat"]').value = c.lat.toFixed(6);
+            document.querySelector('[name="lng"]').value = c.lng.toFixed(6);
+        }
+    });
+
+    // Attach debounced listeners to all search inputs
+    document.querySelectorAll('#search-form input, #search-form select').forEach(function(el) {
+        el.addEventListener('input', function() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(updateResultCount, 400);
+        });
+        el.addEventListener('change', function() {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(updateResultCount, 200);
+        });
+    });
+
+    // Initialize on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        initMap();
+        updateDriverLocations();
+        setInterval(updateDriverLocations, 5000);
+        setInterval(pollRequestsStatus, 10000);
+    });
+})();
+</script>
 {% endblock %}

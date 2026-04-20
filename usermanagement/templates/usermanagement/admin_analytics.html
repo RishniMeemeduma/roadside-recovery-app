@@ -2,8 +2,247 @@
 {% block title %}Analytics{% endblock %}
 
 {% block content %}
-<h2 style="font-size:22px; font-weight:700; color:#1a1a2e; margin-bottom:20px;">Analytics</h2>
-<div style="background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:24px; text-align:center; color:#888;">
-    <p style="font-size:16px;">Analytics dashboard coming soon.</p>
+<div class="admin-wrap">
+<div class="admin-page-header">
+    <div>
+        <h1 class="title">Analytics</h1>
+        <div class="subtitle">Operational performance across requests, drivers and services.</div>
+    </div>
 </div>
+
+<!-- Top Stat Cards -->
+<div class="admin-stat-grid">
+    <div class="admin-stat">
+        <div class="label">Total Requests</div>
+        <div class="value">{{ total_requests }}</div>
+    </div>
+    <div class="admin-stat accent-success">
+        <div class="label">Completed Jobs</div>
+        <div class="value">{{ completed }}</div>
+        {% if total_requests %}<div class="sub">{% widthratio completed total_requests 100 %}% completion rate</div>{% endif %}
+    </div>
+    <div class="admin-stat accent-warn">
+        <div class="label">Avg Completion Time</div>
+        <div class="value">{{ avg_completion }}<span class="unit">min</span></div>
+    </div>
+    <div class="admin-stat accent-info">
+        <div class="label">Registered Members</div>
+        <div class="value">{{ total_members }}</div>
+    </div>
+    <div class="admin-stat">
+        <div class="label">Total Drivers</div>
+        <div class="value">{{ total_drivers }}</div>
+        <div class="sub">{{ online_drivers }} online now</div>
+    </div>
+</div>
+
+<!-- Request Status Breakdown -->
+<div class="status-row">
+    <div class="status-item s-pending">
+        <div>
+            <div class="count">{{ pending }}</div>
+            <div class="name">Pending</div>
+        </div>
+    </div>
+    <div class="status-item s-in-progress">
+        <div>
+            <div class="count">{{ in_progress }}</div>
+            <div class="name">In Progress</div>
+        </div>
+    </div>
+    <div class="status-item s-completed">
+        <div>
+            <div class="count">{{ completed }}</div>
+            <div class="name">Completed</div>
+        </div>
+    </div>
+    <div class="status-item s-cancelled">
+        <div>
+            <div class="count">{{ cancelled }}</div>
+            <div class="name">Cancelled</div>
+        </div>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header"><h3>Requests Over Last 14 Days</h3></div>
+    <canvas id="requestsChart" height="100"></canvas>
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header"><h3>Driver Performance</h3></div>
+    <canvas id="driverChart" height="100"></canvas>
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header"><h3>Requests by Service</h3></div>
+    <div style="overflow-x:auto;">
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>Service</th>
+                <th style="width:120px;">Requests</th>
+                <th style="width:40%;">Volume</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in requests_by_service %}
+            <tr>
+                <td style="font-weight:600;">{{ row.service__name }}</td>
+                <td>{{ row.count }}</td>
+                <td>
+                    <div class="bar-container">
+                        <div class="bar-fill" style="width: {% widthratio row.count total_requests 100 %}%;"></div>
+                    </div>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="3" class="empty-cell">No request data yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="admin-card-header"><h3>Top Drivers</h3></div>
+    <div style="overflow-x:auto;">
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th style="width:40px;">#</th>
+                <th>Driver</th>
+                <th>Jobs Completed</th>
+                <th>Avg Time</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for driver in top_drivers %}
+            <tr>
+                <td style="font-weight:700; color:var(--gray);">{{ forloop.counter }}</td>
+                <td style="font-weight:600;">{{ driver.driver__user__username }}</td>
+                <td>{{ driver.jobs }}</td>
+                <td>{% if driver.avg_time %}{{ driver.avg_time|floatformat:1 }} min{% else %}-{% endif %}</td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="4" class="empty-cell">No completed jobs yet.</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    </div>
+</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+(function() {
+    const labels = {{ chart_labels_json|safe }};
+    const totalData = {{ chart_total_json|safe }};
+    const completedData = {{ chart_completed_json|safe }};
+    const cancelledData = {{ chart_cancelled_json|safe }};
+
+    new Chart(document.getElementById('requestsChart'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [
+                {
+                    label: 'Total Requests',
+                    data: totalData,
+                    borderColor: '#2b80d9',
+                    backgroundColor: 'rgba(43, 128, 217, 0.12)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#2b80d9',
+                },
+                {
+                    label: 'Completed',
+                    data: completedData,
+                    borderColor: '#4CAF50',
+                    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#4CAF50',
+                },
+                {
+                    label: 'Cancelled',
+                    data: cancelledData,
+                    borderColor: '#f44336',
+                    backgroundColor: 'rgba(244, 67, 54, 0.1)',
+                    fill: true,
+                    tension: 0.3,
+                    pointRadius: 4,
+                    pointBackgroundColor: '#f44336',
+                },
+            ],
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'top' },
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1 },
+                },
+            },
+        },
+    });
+
+    const driverNames = {{ driver_perf_names_json|safe }};
+    const driverJobs = {{ driver_perf_jobs_json|safe }};
+    const driverTimes = {{ driver_perf_times_json|safe }};
+
+    if (driverNames.length > 0) {
+        new Chart(document.getElementById('driverChart'), {
+            type: 'bar',
+            data: {
+                labels: driverNames,
+                datasets: [
+                    {
+                        label: 'Jobs Completed',
+                        data: driverJobs,
+                        backgroundColor: '#2b80d9',
+                        borderRadius: 6,
+                        yAxisID: 'y',
+                    },
+                    {
+                        label: 'Avg Time (min)',
+                        data: driverTimes,
+                        backgroundColor: '#FF9800',
+                        borderRadius: 6,
+                        yAxisID: 'y1',
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                plugins: {
+                    legend: { position: 'top' },
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        position: 'left',
+                        title: { display: true, text: 'Jobs' },
+                        ticks: { stepSize: 1 },
+                    },
+                    y1: {
+                        beginAtZero: true,
+                        position: 'right',
+                        title: { display: true, text: 'Avg Time (min)' },
+                        grid: { drawOnChartArea: false },
+                    },
+                },
+            },
+        });
+    } else {
+        document.getElementById('driverChart').parentElement.innerHTML +=
+            '<p style="text-align:center; color:#888; font-size:13px;">No completed jobs yet.</p>';
+    }
+})();
+</script>
 {% endblock %}
