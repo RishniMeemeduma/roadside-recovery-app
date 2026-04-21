@@ -1,4 +1,6 @@
-from django.urls import path
+from django.contrib.auth import views as auth_views
+from django.urls import path, reverse_lazy
+
 from usermanagement.views import admin_handle_request, admin_requests_status, admin_recovery_requests_api, admin_users, assign_recovery_request, cancel_driver_assignment, complete_driver_assignment, decline_recovery_request, driver_assignment_snapshot, driver_dispatch_card, driver_requests, login_view, members, member_requests_status, register_view, request_driver_assistance, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services, submit_request, lookup_vehicle, cancel_request, get_driver_locations, update_driver_location, update_driver_status, accept_driver_assignment, member_request_driver_location
 
 urlpatterns = [
@@ -36,4 +38,38 @@ urlpatterns = [
     path('api/cancel-driver-assignment/', cancel_driver_assignment, name='cancel_driver_assignment'),
     path('api/request-driver-assistance/', request_driver_assistance, name='request_driver_assistance'),
     path('dashboard/recovery-requests/<int:request_id>/decline/', decline_recovery_request, name='decline_recovery_request'),
+
+    # FR-0003 — Password reset flow (Django's built-in views + project templates).
+    path(
+        'password-reset/',
+        auth_views.PasswordResetView.as_view(
+            template_name='registration/password_reset_form.html',
+            email_template_name='registration/password_reset_email.html',
+            subject_template_name='registration/password_reset_subject.txt',
+            success_url=reverse_lazy('password_reset_done'),
+        ),
+        name='password_reset',
+    ),
+    path(
+        'password-reset/done/',
+        auth_views.PasswordResetDoneView.as_view(
+            template_name='registration/password_reset_done.html',
+        ),
+        name='password_reset_done',
+    ),
+    path(
+        'password-reset/confirm/<uidb64>/<token>/',
+        auth_views.PasswordResetConfirmView.as_view(
+            template_name='registration/password_reset_confirm.html',
+            success_url=reverse_lazy('password_reset_complete'),
+        ),
+        name='password_reset_confirm',
+    ),
+    path(
+        'password-reset/complete/',
+        auth_views.PasswordResetCompleteView.as_view(
+            template_name='registration/password_reset_complete.html',
+        ),
+        name='password_reset_complete',
+    ),
 ]

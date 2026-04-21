@@ -15,6 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+from django_ratelimit.decorators import ratelimit
 
 from .forms import RegistrationForm
 from recovery.models import Assignment, RecoveryRequest, JobHistory
@@ -310,8 +311,19 @@ def signup(request):
     return render(request, 'usermanagement/register.html', {'services': services})
 
 
+@ratelimit(key='ip', rate='5/5m', method='POST', block=False)
 def login_view(request):
+    # FR-0002: rate-limit failed login attempts by IP. Successful logins and
+    # GETs still rendering the form are not counted against the limit below —
+    # we check request.limited only on POST.
     if request.method == 'POST':
+        if getattr(request, 'limited', False):
+            messages.error(
+                request,
+                'Too many login attempts. Please wait a few minutes and try again.',
+            )
+            return render(request, 'usermanagement/login.html', status=429)
+
         username = request.POST.get('username')
         password = request.POST.get('password')
 
