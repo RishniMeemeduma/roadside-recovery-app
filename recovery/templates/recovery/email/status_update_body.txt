@@ -1,0 +1,23 @@
+{% autoescape off %}Hi {{ member.get_username }},
+
+Your QuickAssist recovery request has been updated.
+
+Request: #{{ request.id }}
+Service: {{ request.service.name }}
+Location: {{ request.address }}
+Vehicle: {{ request.vehicle_details }}
+
+Status: {{ previous_status|default:"—" }} → {{ request.get_status_display }}
+{% if request.status == 'ASSIGNED' %}
+A driver has been assigned to your request and will be with you shortly.
+{% elif request.status == 'IN-PROGRESS' %}
+Your driver is on the way. Track their live location in the member dashboard.
+{% elif request.status == 'COMPLETED' %}
+Your job is complete. Thanks for using QuickAssist Northwest.
+{% elif request.status == 'CANCELLED' %}
+Your request has been cancelled. If this wasn't expected, please get in touch.
+{% endif %}
+View details: {{ site_url }}/dashboard/
+
+— QuickAssist Northwest
+{% endautoescape %}
