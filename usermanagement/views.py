@@ -52,9 +52,35 @@ def _supports_service(driver_status, service):
 DISPATCH_BATCH_SIZE = 3
 DRIVER_RESPONSE_TIMEOUT_SECONDS = 60
 
+# FR-0006 dispatch weighting (per SRS): composite score = 0.4·proximity + 0.6·specialisation.
+# Proximity is linear-decayed over DISPATCH_MAX_DISTANCE_KM so a driver at the
+# request location scores 1.0 and a driver at/beyond the cap scores 0.0.
+# Specialisation is binary (1.0 if the driver's specialization list includes
+# the requested service, else 0.0). A specialist at the cap scores 0.6 and
+# always outranks a non-specialist at the request location (0.4) — matching
+# the SRS intent that specialisation dominates proximity.
+DISPATCH_PROXIMITY_WEIGHT = 0.4
+DISPATCH_SPECIALISATION_WEIGHT = 0.6
+DISPATCH_MAX_DISTANCE_KM = 50.0
+
+
+def _proximity_score(distance_km):
+    """Linear decay in [0, 1]: 1.0 at 0 km, 0.0 at the cap and beyond."""
+    if distance_km <= 0:
+        return 1.0
+    if distance_km >= DISPATCH_MAX_DISTANCE_KM:
+        return 0.0
+    return 1.0 - (distance_km / DISPATCH_MAX_DISTANCE_KM)
+
 
 def _rank_optimal_drivers(recovery_request, excluded_driver_ids=None):
-    """Return available service-capable drivers ranked by distance."""
+    """Return available drivers ranked by the SRS weighted dispatch score.
+
+    Returns a list of (composite_score, driver) tuples sorted by
+    composite_score descending (best first). Specialisation is no longer a
+    hard eligibility gate — a nearby non-specialist is still offered if no
+    specialist is available, but always ranks below any specialist.
+    """
     excluded_driver_ids = excluded_driver_ids or set()
     req_lat = float(recovery_request.location_latitude)
     req_lon = float(recovery_request.location_longitude)
@@ -70,8 +96,6 @@ def _rank_optimal_drivers(recovery_request, excluded_driver_ids=None):
     for driver in candidate_drivers:
         if driver.id in excluded_driver_ids:
             continue
-        if not _supports_service(driver, recovery_request.service):
-            continue
 
         current_location = driver.user.usermanagement_locations.filter(is_current=True).order_by('-updated_at').first()
         if not current_location:
@@ -83,9 +107,16 @@ def _rank_optimal_drivers(recovery_request, excluded_driver_ids=None):
             float(current_location.latitude),
             float(current_location.longitude),
         )
-        ranked.append((distance_km, driver))
 
-    ranked.sort(key=lambda item: item[0])
+        proximity = _proximity_score(distance_km)
+        specialisation = 1.0 if _supports_service(driver, recovery_request.service) else 0.0
+        composite = (
+            DISPATCH_PROXIMITY_WEIGHT * proximity
+            + DISPATCH_SPECIALISATION_WEIGHT * specialisation
+        )
+        ranked.append((composite, driver))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
     return ranked
 
 

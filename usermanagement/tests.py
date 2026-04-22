@@ -276,6 +276,31 @@ class TestRankDrivers(BaseTestCase):
         ranked = um_views._rank_optimal_drivers(rr, excluded_driver_ids={self.driver_status.id})
         self.assertEqual(ranked, [])
 
+    def test_DR05_specialist_outranks_nearer_non_specialist(self):
+        # FR-0006: 0.6·specialisation dominates 0.4·proximity, so a specialist
+        # even at the distance cap outranks a non-specialist at the request
+        # location. Specialist score 0.6·0 + 0.6 = 0.60; non-specialist score
+        # 0.4·1 + 0 = 0.40.
+        rr = self._make_request(lat='53.0', lon='-2.0')
+        DriverLocation.objects.filter(driver=self.driver_user).update(is_current=False)
+        far_specialist = self._make_driver('far_spec', 53.3, -2.0, spec=[self.service.id])
+        near_generalist = self._make_driver('near_gen', 53.001, -2.001, spec=[])
+        ranked = um_views._rank_optimal_drivers(rr)
+        ids = [d.id for _, d in ranked]
+        self.assertEqual(ids[0], far_specialist.id)
+        self.assertIn(near_generalist.id, ids)
+
+    def test_DR06_non_specialists_now_eligible(self):
+        # Previously non-specialists were excluded entirely. With the weighted
+        # score they remain eligible so a request doesn't stall when no
+        # specialist is available.
+        rr = self._make_request()
+        DriverLocation.objects.filter(driver=self.driver_user).update(is_current=False)
+        generalist = self._make_driver('gen_only', 53.5, -2.2, spec=[])
+        ranked = um_views._rank_optimal_drivers(rr)
+        ids = [d.id for _, d in ranked]
+        self.assertIn(generalist.id, ids)
+
 
 # ---------------------------------------------------------------------------
 # 3.4 Dispatch logic
