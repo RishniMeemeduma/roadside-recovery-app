@@ -1,8 +1,10 @@
+import logging
 import re
 import requests as http_requests
 from math import atan2, cos, radians, sin, sqrt
 from datetime import timedelta
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.core.validators import validate_email
 from django.db import models, transaction
 from django.db.models import Max
@@ -12,10 +14,13 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
+
+logger = logging.getLogger(__name__)
 
 from .forms import RegistrationForm
 from recovery.models import Assignment, RecoveryRequest, JobHistory
@@ -1423,6 +1428,45 @@ def cancel_driver_assignment(request):
         return JsonResponse({'error': str(e)}, status=400)
 
 
+def _notify_admins_of_assistance_request(assignment, notes):
+    """FR-0007 — email every active admin when a driver requests assistance."""
+    admin_emails = list(
+        User.objects.filter(
+            role='ADMIN', active=True, deleted_at__isnull=True,
+        ).exclude(email='').values_list('email', flat=True)
+    )
+    if not admin_emails:
+        return
+
+    context = {
+        'assignment': assignment,
+        'request': assignment.request,
+        'driver': assignment.driver.user,
+        'notes': notes,
+        'site_url': getattr(settings, 'SITE_URL', ''),
+    }
+    subject = render_to_string(
+        'usermanagement/email/driver_assistance_subject.txt', context,
+    ).strip()
+    body = render_to_string(
+        'usermanagement/email/driver_assistance_body.txt', context,
+    )
+
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=admin_emails,
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception(
+            'Failed to email admins about assistance request for assignment %s',
+            assignment.pk,
+        )
+
+
 @login_required
 @require_POST
 def request_driver_assistance(request):
@@ -1449,6 +1493,8 @@ def request_driver_assistance(request):
         if assignment.request.priority != 'EMERGENCY':
             assignment.request.priority = 'EMERGENCY'
             assignment.request.save(update_fields=['priority', 'updated_at'])
+
+        _notify_admins_of_assistance_request(assignment, notes)
 
         return JsonResponse({
             'success': True,

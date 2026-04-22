@@ -658,6 +658,35 @@ class TestDriverWorkflow(BaseTestCase):
         rr.refresh_from_db()
         self.assertEqual(rr.priority, 'EMERGENCY')
 
+    def test_DW11_assistance_emails_admins(self):
+        # FR-0007: requesting assistance notifies every active admin.
+        from django.core import mail
+        User.objects.create_user(
+            username='admin_alpha', email='alpha@ops.test', password='p',
+            role='ADMIN', status='APPROVED',
+        )
+        User.objects.create_user(
+            username='admin_beta', email='beta@ops.test', password='p',
+            role='ADMIN', status='APPROVED',
+        )
+        rr = self._make_request(status='IN-PROGRESS')
+        a = Assignment.objects.create(
+            request=rr, driver=self.driver_status, offer_sent_at=timezone.now(),
+            driver_response='ACCEPTED', accepted_at=timezone.now(),
+        )
+        mail.outbox = []
+        r = self._post_json(
+            '/api/request-driver-assistance/',
+            {'assignment_id': a.id, 'notes': 'stuck in ditch, need winch'},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertIn('alpha@ops.test', message.to)
+        self.assertIn('beta@ops.test', message.to)
+        self.assertIn(str(rr.id), message.subject)
+        self.assertIn('stuck in ditch, need winch', message.body)
+
     def test_DW11_update_location(self):
         r = self._post_json('/api/update-location/', {'latitude': 53.5, 'longitude': -2.3})
         self.assertEqual(r.status_code, 200)
