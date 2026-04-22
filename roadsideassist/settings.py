@@ -13,8 +13,14 @@ https://docs.djangoproject.com/en/6.0/ref/settings/
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load .env file from project root so runserver picks up local secrets
+# (SECRET_KEY, RECAPTCHA_*, EMAIL_*, etc.). Docker sets env vars directly.
+load_dotenv(BASE_DIR / '.env')
 
 
 # Quick-start development settings - unsuitable for production
@@ -158,4 +164,11 @@ SITE_URL = os.environ.get('SITE_URL', 'http://localhost:8000')
 
 # Rate limiting — django-ratelimit uses the default cache backend.
 RATELIMIT_ENABLE = os.environ.get('RATELIMIT_ENABLE', 'True') == 'True'
+
+# reCAPTCHA v2 — site key is public (embedded in HTML), secret is server-side
+# only. When RECAPTCHA_SECRET_KEY is empty the verification step becomes a
+# no-op so local dev without keys keeps working.
+RECAPTCHA_SITE_KEY = os.environ.get('RECAPTCHA_SITE_KEY', '')
+RECAPTCHA_SECRET_KEY = os.environ.get('RECAPTCHA_SECRET_KEY', '')
+RECAPTCHA_VERIFY_URL = 'https://www.google.com/recaptcha/api/siteverify'
 

@@ -342,18 +342,56 @@ def signup(request):
     return render(request, 'usermanagement/register.html', {'services': services})
 
 
+def _verify_recaptcha(token, remote_ip=None):
+    """Verify a reCAPTCHA v2 response token with Google.
+
+    Returns True if the token is valid or if no secret is configured (dev mode
+    without keys). Returns False on any verification failure or network error.
+    """
+    secret = getattr(settings, 'RECAPTCHA_SECRET_KEY', '')
+    if not secret:
+        return True  # feature disabled — don't block logins in dev
+    if not token:
+        return False
+    payload = {'secret': secret, 'response': token}
+    if remote_ip:
+        payload['remoteip'] = remote_ip
+    try:
+        response = http_requests.post(
+            settings.RECAPTCHA_VERIFY_URL, data=payload, timeout=5,
+        )
+        return bool(response.json().get('success'))
+    except (http_requests.RequestException, ValueError):
+        return False
+
+
 @ratelimit(key='ip', rate='5/5m', method='POST', block=False)
 def login_view(request):
-    # FR-0002: rate-limit failed login attempts by IP. Successful logins and
-    # GETs still rendering the form are not counted against the limit below —
-    # we check request.limited only on POST.
+    # FR-0002: rate-limit failed login attempts by IP + reCAPTCHA gate.
+    # The limit check and reCAPTCHA verification run only on POST — GETs
+    # render the form freely.
     if request.method == 'POST':
         if getattr(request, 'limited', False):
             messages.error(
                 request,
                 'Too many login attempts. Please wait a few minutes and try again.',
             )
-            return render(request, 'usermanagement/login.html', status=429)
+            return render(
+                request,
+                'registration/login.html',
+                {'recaptcha_site_key': settings.RECAPTCHA_SITE_KEY},
+                status=429,
+            )
+
+        recaptcha_token = request.POST.get('g-recaptcha-response', '')
+        remote_ip = request.META.get('REMOTE_ADDR')
+        if not _verify_recaptcha(recaptcha_token, remote_ip):
+            messages.error(request, 'Please confirm you are not a robot and try again.')
+            return render(
+                request,
+                'registration/login.html',
+                {'recaptcha_site_key': settings.RECAPTCHA_SITE_KEY},
+            )
 
         username = request.POST.get('username')
         password = request.POST.get('password')
@@ -366,7 +404,11 @@ def login_view(request):
         else:
             messages.error(request, 'Invalid username or password.')
 
-    return render(request, 'usermanagement/login.html')
+    return render(
+        request,
+        'registration/login.html',
+        {'recaptcha_site_key': settings.RECAPTCHA_SITE_KEY},
+    )
 
 @login_required
 def dashboard(request):

@@ -431,6 +431,40 @@ class TestAuthentication(BaseTestCase):
         self.assertEqual(r.status_code, 302)
         self.assertIn('login', r.url)
 
+    def test_AU09_recaptcha_blocks_login_when_token_fails(self):
+        # FR-0002: when reCAPTCHA is configured and verification fails, the
+        # login POST must not reach authenticate().
+        from unittest.mock import patch
+        from usermanagement import views as um_views
+        with self.settings(RECAPTCHA_SECRET_KEY='dummy-secret'):
+            with patch.object(um_views, '_verify_recaptcha', return_value=False) as m:
+                r = self.client.post('/login/', {
+                    'username': 'member1', 'password': 'testpass123',
+                    'g-recaptcha-response': 'invalid',
+                })
+                self.assertTrue(m.called, 'reCAPTCHA verifier was not invoked')
+                self.assertEqual(r.status_code, 200)
+                self.assertFalse(r.wsgi_request.user.is_authenticated)
+
+    def test_AU10_recaptcha_passes_login_when_token_valid(self):
+        from unittest.mock import patch
+        with self.settings(RECAPTCHA_SECRET_KEY='dummy-secret'):
+            with patch('usermanagement.views._verify_recaptcha', return_value=True):
+                r = self.client.post('/login/', {
+                    'username': 'member1', 'password': 'testpass123',
+                    'g-recaptcha-response': 'valid',
+                })
+                self.assertEqual(r.status_code, 302)
+
+    def test_AU11_recaptcha_noop_when_secret_empty(self):
+        # With no RECAPTCHA_SECRET_KEY configured, the gate is a no-op so dev
+        # without keys still works.
+        with self.settings(RECAPTCHA_SECRET_KEY=''):
+            r = self.client.post('/login/', {
+                'username': 'member1', 'password': 'testpass123',
+            })
+            self.assertEqual(r.status_code, 302)
+
 
 # ---------------------------------------------------------------------------
 # 4.2 Member dashboard & requests
