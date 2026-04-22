@@ -1,0 +1,1 @@
+{% autoescape off %}[QuickAssist] Your recovery request #{{ request.id }} is now {{ request.get_status_display }}{% endautoescape %}
