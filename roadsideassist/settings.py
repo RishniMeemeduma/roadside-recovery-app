@@ -157,7 +157,7 @@ DEFAULT_FROM_EMAIL = os.environ.get(
     'DEFAULT_FROM_EMAIL',
     'QuickAssist Northwest <no-reply@quickassist.local>',
 )
-PASSWORD_RESET_TIMEOUT = 60 * 60 * 24  # 24 hours
+PASSWORD_RESET_TIMEOUT = 60 * 30  # 30 minutes (FR-0003)
 
 # Public base URL for links in outbound emails (password reset etc.).
 SITE_URL = os.environ.get('SITE_URL', 'http://localhost:8000')
