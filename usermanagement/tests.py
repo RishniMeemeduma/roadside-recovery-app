@@ -337,6 +337,59 @@ class TestDispatch(BaseTestCase):
         rr.refresh_from_db()
         self.assertEqual(rr.status, 'ASSIGNED')
 
+    def test_DP04_escalates_to_admin_after_max_batches(self):
+        # FR-0006: once MAX_DISPATCH_BATCHES * DISPATCH_BATCH_SIZE offers have
+        # been sent with no acceptance, further dispatch is capped and every
+        # active admin gets an email.
+        from django.core import mail
+        User.objects.create_user(
+            username='ops_admin', email='ops@quickassist.test',
+            password='p', role='ADMIN', status='APPROVED',
+        )
+        rr = self._make_request()
+        # Pre-seed 9 TIMEOUT offers from disposable driver accounts.
+        for i in range(um_views.MAX_DISPATCH_BATCHES * um_views.DISPATCH_BATCH_SIZE):
+            u = User.objects.create_user(
+                username=f'exhausted_{i}', email=f'ex{i}@t.com', password='p',
+                role='DRIVER', status='APPROVED',
+            )
+            ds = DriverStatus.objects.create(
+                user=u, status='AVAILABLE', license_number='L',
+                vehicle_type='TOW_TRUCK', vehicle_registration='X',
+                qualification=[], specialization=[self.service.id],
+            )
+            Assignment.objects.create(
+                request=rr, driver=ds, offer_sent_at=timezone.now(),
+                driver_response=Assignment.DriverResponse.TIMEOUT,
+            )
+        mail.outbox = []
+        count = um_views._dispatch_to_next_optimal_drivers(rr)
+        self.assertEqual(count, 0)
+        rr.refresh_from_db()
+        self.assertEqual(rr.status, 'PENDING')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('ops@quickassist.test', mail.outbox[0].to)
+        self.assertIn(str(rr.id), mail.outbox[0].subject)
+
+    def test_DP05_escalates_when_no_eligible_drivers(self):
+        # When _rank_optimal_drivers returns empty (every driver offline or
+        # excluded), escalation fires immediately instead of looping forever.
+        from django.core import mail
+        User.objects.create_user(
+            username='ops2', email='ops2@quickassist.test',
+            password='p', role='ADMIN', status='APPROVED',
+        )
+        self.driver_status.status = 'OFFLINE'
+        self.driver_status.save()
+        rr = self._make_request()
+        mail.outbox = []
+        count = um_views._dispatch_to_next_optimal_drivers(rr)
+        self.assertEqual(count, 0)
+        rr.refresh_from_db()
+        self.assertEqual(rr.status, 'PENDING')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('ops2@quickassist.test', mail.outbox[0].to)
+
 
 # ---------------------------------------------------------------------------
 # 3.5 Offer rotation

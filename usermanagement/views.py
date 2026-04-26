@@ -56,6 +56,9 @@ def _supports_service(driver_status, service):
 
 DISPATCH_BATCH_SIZE = 3
 DRIVER_RESPONSE_TIMEOUT_SECONDS = 60
+# FR-0006 escalation: after MAX_DISPATCH_BATCHES full batches with no
+# acceptance, stop auto-dispatching and hand off to a human admin.
+MAX_DISPATCH_BATCHES = 3
 
 # FR-0006 dispatch weighting (per SRS): composite score = 0.4·proximity + 0.6·specialisation.
 # Proximity is linear-decayed over DISPATCH_MAX_DISTANCE_KM so a driver at the
@@ -125,16 +128,81 @@ def _rank_optimal_drivers(recovery_request, excluded_driver_ids=None):
     return ranked
 
 
+def _escalate_to_admin_manual_assignment(recovery_request, reason):
+    """FR-0006 escalation — flip request to PENDING and email every active
+    admin so they can manually assign. Called when auto-dispatch has
+    exhausted its batches or when no eligible drivers remain.
+    """
+    if recovery_request.status != 'PENDING':
+        recovery_request.status = 'PENDING'
+        recovery_request.save(update_fields=['status', 'updated_at'])
+
+    admin_emails = list(
+        User.objects.filter(
+            role='ADMIN', active=True, deleted_at__isnull=True,
+        ).exclude(email='').values_list('email', flat=True)
+    )
+    if not admin_emails:
+        return
+
+    offers_sent = recovery_request.assignments.count()
+    context = {
+        'request': recovery_request,
+        'reason': reason,
+        'offers_sent': offers_sent,
+        'site_url': getattr(settings, 'SITE_URL', ''),
+    }
+    subject = render_to_string(
+        'usermanagement/email/dispatch_escalation_subject.txt', context,
+    ).strip()
+    body = render_to_string(
+        'usermanagement/email/dispatch_escalation_body.txt', context,
+    )
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=admin_emails,
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception(
+            'Failed to email admins about escalation for request %s',
+            recovery_request.pk,
+        )
+
+
 def _dispatch_to_next_optimal_drivers(recovery_request):
-    """Send the request to the next nearest batch of available drivers."""
+    """Send the request to the next nearest batch of available drivers.
+
+    Escalates to admin (FR-0006) when either
+    (a) MAX_DISPATCH_BATCHES have already been tried with no acceptance, or
+    (b) no eligible drivers remain for the next batch.
+    """
     already_offered_ids = set(
         Assignment.objects.filter(request=recovery_request).values_list('driver_id', flat=True)
     )
+
+    # (a) Cap on auto-dispatch attempts.
+    if len(already_offered_ids) >= MAX_DISPATCH_BATCHES * DISPATCH_BATCH_SIZE:
+        _escalate_to_admin_manual_assignment(
+            recovery_request,
+            reason=(
+                f'No driver accepted after {MAX_DISPATCH_BATCHES} batches '
+                f'({len(already_offered_ids)} offers). Manual assignment required.'
+            ),
+        )
+        return 0
+
     ranked = _rank_optimal_drivers(recovery_request, excluded_driver_ids=already_offered_ids)
     selected = ranked[:DISPATCH_BATCH_SIZE]
     if not selected:
-        recovery_request.status = 'PENDING'
-        recovery_request.save(update_fields=['status', 'updated_at'])
+        # (b) No drivers left to try.
+        _escalate_to_admin_manual_assignment(
+            recovery_request,
+            reason='No eligible drivers available for this request.',
+        )
         return 0
 
     now = timezone.now()
