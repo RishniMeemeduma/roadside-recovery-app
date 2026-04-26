@@ -12,7 +12,8 @@
       "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" issue list --state all --limit 100 --repo RishniMeemeduma/roadside-recovery-app)",
       "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" issue list --state all --limit 100 --repo RishniMeemeduma/roadside-recovery-app --json number,title,state,labels,createdAt,closedAt,body)",
       "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" issue list --state all --limit 100 --repo RishniMeemeduma/roadside-recovery-app --search \"1 2\")",
-      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" label list --repo RishniMeemeduma/roadside-recovery-app)"
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" label list --repo RishniMeemeduma/roadside-recovery-app)",
+      "Bash(\"/c/Program Files/GitHub CLI/gh.exe\" pr list --state all --limit 30 --repo RishniMeemeduma/roadside-recovery-app)"
     ]
   }
 }
