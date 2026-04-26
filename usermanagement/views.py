@@ -1,8 +1,10 @@
+import logging
 import re
 import requests as http_requests
 from math import atan2, cos, radians, sin, sqrt
 from datetime import timedelta
 from django.core.exceptions import ValidationError
+from django.core.mail import send_mail
 from django.core.validators import validate_email
 from django.db import models, transaction
 from django.db.models import Max
@@ -12,10 +14,13 @@ from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 from django_ratelimit.decorators import ratelimit
+
+logger = logging.getLogger(__name__)
 
 from .forms import RegistrationForm
 from recovery.models import Assignment, RecoveryRequest, JobHistory
@@ -51,10 +56,39 @@ def _supports_service(driver_status, service):
 
 DISPATCH_BATCH_SIZE = 3
 DRIVER_RESPONSE_TIMEOUT_SECONDS = 60
+# FR-0006 escalation: after MAX_DISPATCH_BATCHES full batches with no
+# acceptance, stop auto-dispatching and hand off to a human admin.
+MAX_DISPATCH_BATCHES = 3
+
+# FR-0006 dispatch weighting (per SRS): composite score = 0.4·proximity + 0.6·specialisation.
+# Proximity is linear-decayed over DISPATCH_MAX_DISTANCE_KM so a driver at the
+# request location scores 1.0 and a driver at/beyond the cap scores 0.0.
+# Specialisation is binary (1.0 if the driver's specialization list includes
+# the requested service, else 0.0). A specialist at the cap scores 0.6 and
+# always outranks a non-specialist at the request location (0.4) — matching
+# the SRS intent that specialisation dominates proximity.
+DISPATCH_PROXIMITY_WEIGHT = 0.4
+DISPATCH_SPECIALISATION_WEIGHT = 0.6
+DISPATCH_MAX_DISTANCE_KM = 50.0
+
+
+def _proximity_score(distance_km):
+    """Linear decay in [0, 1]: 1.0 at 0 km, 0.0 at the cap and beyond."""
+    if distance_km <= 0:
+        return 1.0
+    if distance_km >= DISPATCH_MAX_DISTANCE_KM:
+        return 0.0
+    return 1.0 - (distance_km / DISPATCH_MAX_DISTANCE_KM)
 
 
 def _rank_optimal_drivers(recovery_request, excluded_driver_ids=None):
-    """Return available service-capable drivers ranked by distance."""
+    """Return available drivers ranked by the SRS weighted dispatch score.
+
+    Returns a list of (composite_score, driver) tuples sorted by
+    composite_score descending (best first). Specialisation is no longer a
+    hard eligibility gate — a nearby non-specialist is still offered if no
+    specialist is available, but always ranks below any specialist.
+    """
     excluded_driver_ids = excluded_driver_ids or set()
     req_lat = float(recovery_request.location_latitude)
     req_lon = float(recovery_request.location_longitude)
@@ -70,8 +104,6 @@ def _rank_optimal_drivers(recovery_request, excluded_driver_ids=None):
     for driver in candidate_drivers:
         if driver.id in excluded_driver_ids:
             continue
-        if not _supports_service(driver, recovery_request.service):
-            continue
 
         current_location = driver.user.usermanagement_locations.filter(is_current=True).order_by('-updated_at').first()
         if not current_location:
@@ -83,22 +115,94 @@ def _rank_optimal_drivers(recovery_request, excluded_driver_ids=None):
             float(current_location.latitude),
             float(current_location.longitude),
         )
-        ranked.append((distance_km, driver))
 
-    ranked.sort(key=lambda item: item[0])
+        proximity = _proximity_score(distance_km)
+        specialisation = 1.0 if _supports_service(driver, recovery_request.service) else 0.0
+        composite = (
+            DISPATCH_PROXIMITY_WEIGHT * proximity
+            + DISPATCH_SPECIALISATION_WEIGHT * specialisation
+        )
+        ranked.append((composite, driver))
+
+    ranked.sort(key=lambda item: item[0], reverse=True)
     return ranked
 
 
+def _escalate_to_admin_manual_assignment(recovery_request, reason):
+    """FR-0006 escalation — flip request to PENDING and email every active
+    admin so they can manually assign. Called when auto-dispatch has
+    exhausted its batches or when no eligible drivers remain.
+    """
+    if recovery_request.status != 'PENDING':
+        recovery_request.status = 'PENDING'
+        recovery_request.save(update_fields=['status', 'updated_at'])
+
+    admin_emails = list(
+        User.objects.filter(
+            role='ADMIN', active=True, deleted_at__isnull=True,
+        ).exclude(email='').values_list('email', flat=True)
+    )
+    if not admin_emails:
+        return
+
+    offers_sent = recovery_request.assignments.count()
+    context = {
+        'request': recovery_request,
+        'reason': reason,
+        'offers_sent': offers_sent,
+        'site_url': getattr(settings, 'SITE_URL', ''),
+    }
+    subject = render_to_string(
+        'usermanagement/email/dispatch_escalation_subject.txt', context,
+    ).strip()
+    body = render_to_string(
+        'usermanagement/email/dispatch_escalation_body.txt', context,
+    )
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=admin_emails,
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception(
+            'Failed to email admins about escalation for request %s',
+            recovery_request.pk,
+        )
+
+
 def _dispatch_to_next_optimal_drivers(recovery_request):
-    """Send the request to the next nearest batch of available drivers."""
+    """Send the request to the next nearest batch of available drivers.
+
+    Escalates to admin (FR-0006) when either
+    (a) MAX_DISPATCH_BATCHES have already been tried with no acceptance, or
+    (b) no eligible drivers remain for the next batch.
+    """
     already_offered_ids = set(
         Assignment.objects.filter(request=recovery_request).values_list('driver_id', flat=True)
     )
+
+    # (a) Cap on auto-dispatch attempts.
+    if len(already_offered_ids) >= MAX_DISPATCH_BATCHES * DISPATCH_BATCH_SIZE:
+        _escalate_to_admin_manual_assignment(
+            recovery_request,
+            reason=(
+                f'No driver accepted after {MAX_DISPATCH_BATCHES} batches '
+                f'({len(already_offered_ids)} offers). Manual assignment required.'
+            ),
+        )
+        return 0
+
     ranked = _rank_optimal_drivers(recovery_request, excluded_driver_ids=already_offered_ids)
     selected = ranked[:DISPATCH_BATCH_SIZE]
     if not selected:
-        recovery_request.status = 'PENDING'
-        recovery_request.save(update_fields=['status', 'updated_at'])
+        # (b) No drivers left to try.
+        _escalate_to_admin_manual_assignment(
+            recovery_request,
+            reason='No eligible drivers available for this request.',
+        )
         return 0
 
     now = timezone.now()
@@ -311,18 +415,56 @@ def signup(request):
     return render(request, 'usermanagement/register.html', {'services': services})
 
 
+def _verify_recaptcha(token, remote_ip=None):
+    """Verify a reCAPTCHA v2 response token with Google.
+
+    Returns True if the token is valid or if no secret is configured (dev mode
+    without keys). Returns False on any verification failure or network error.
+    """
+    secret = getattr(settings, 'RECAPTCHA_SECRET_KEY', '')
+    if not secret:
+        return True  # feature disabled — don't block logins in dev
+    if not token:
+        return False
+    payload = {'secret': secret, 'response': token}
+    if remote_ip:
+        payload['remoteip'] = remote_ip
+    try:
+        response = http_requests.post(
+            settings.RECAPTCHA_VERIFY_URL, data=payload, timeout=5,
+        )
+        return bool(response.json().get('success'))
+    except (http_requests.RequestException, ValueError):
+        return False
+
+
 @ratelimit(key='ip', rate='5/5m', method='POST', block=False)
 def login_view(request):
-    # FR-0002: rate-limit failed login attempts by IP. Successful logins and
-    # GETs still rendering the form are not counted against the limit below —
-    # we check request.limited only on POST.
+    # FR-0002: rate-limit failed login attempts by IP + reCAPTCHA gate.
+    # The limit check and reCAPTCHA verification run only on POST — GETs
+    # render the form freely.
     if request.method == 'POST':
         if getattr(request, 'limited', False):
             messages.error(
                 request,
                 'Too many login attempts. Please wait a few minutes and try again.',
             )
-            return render(request, 'usermanagement/login.html', status=429)
+            return render(
+                request,
+                'registration/login.html',
+                {'recaptcha_site_key': settings.RECAPTCHA_SITE_KEY},
+                status=429,
+            )
+
+        recaptcha_token = request.POST.get('g-recaptcha-response', '')
+        remote_ip = request.META.get('REMOTE_ADDR')
+        if not _verify_recaptcha(recaptcha_token, remote_ip):
+            messages.error(request, 'Please confirm you are not a robot and try again.')
+            return render(
+                request,
+                'registration/login.html',
+                {'recaptcha_site_key': settings.RECAPTCHA_SITE_KEY},
+            )
 
         username = request.POST.get('username')
         password = request.POST.get('password')
@@ -335,7 +477,11 @@ def login_view(request):
         else:
             messages.error(request, 'Invalid username or password.')
 
-    return render(request, 'usermanagement/login.html')
+    return render(
+        request,
+        'registration/login.html',
+        {'recaptcha_site_key': settings.RECAPTCHA_SITE_KEY},
+    )
 
 @login_required
 def dashboard(request):
@@ -1350,6 +1496,45 @@ def cancel_driver_assignment(request):
         return JsonResponse({'error': str(e)}, status=400)
 
 
+def _notify_admins_of_assistance_request(assignment, notes):
+    """FR-0007 — email every active admin when a driver requests assistance."""
+    admin_emails = list(
+        User.objects.filter(
+            role='ADMIN', active=True, deleted_at__isnull=True,
+        ).exclude(email='').values_list('email', flat=True)
+    )
+    if not admin_emails:
+        return
+
+    context = {
+        'assignment': assignment,
+        'request': assignment.request,
+        'driver': assignment.driver.user,
+        'notes': notes,
+        'site_url': getattr(settings, 'SITE_URL', ''),
+    }
+    subject = render_to_string(
+        'usermanagement/email/driver_assistance_subject.txt', context,
+    ).strip()
+    body = render_to_string(
+        'usermanagement/email/driver_assistance_body.txt', context,
+    )
+
+    try:
+        send_mail(
+            subject=subject,
+            message=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=admin_emails,
+            fail_silently=False,
+        )
+    except Exception:
+        logger.exception(
+            'Failed to email admins about assistance request for assignment %s',
+            assignment.pk,
+        )
+
+
 @login_required
 @require_POST
 def request_driver_assistance(request):
@@ -1376,6 +1561,8 @@ def request_driver_assistance(request):
         if assignment.request.priority != 'EMERGENCY':
             assignment.request.priority = 'EMERGENCY'
             assignment.request.save(update_fields=['priority', 'updated_at'])
+
+        _notify_admins_of_assistance_request(assignment, notes)
 
         return JsonResponse({
             'success': True,

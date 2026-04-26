@@ -276,6 +276,31 @@ class TestRankDrivers(BaseTestCase):
         ranked = um_views._rank_optimal_drivers(rr, excluded_driver_ids={self.driver_status.id})
         self.assertEqual(ranked, [])
 
+    def test_DR05_specialist_outranks_nearer_non_specialist(self):
+        # FR-0006: 0.6·specialisation dominates 0.4·proximity, so a specialist
+        # even at the distance cap outranks a non-specialist at the request
+        # location. Specialist score 0.6·0 + 0.6 = 0.60; non-specialist score
+        # 0.4·1 + 0 = 0.40.
+        rr = self._make_request(lat='53.0', lon='-2.0')
+        DriverLocation.objects.filter(driver=self.driver_user).update(is_current=False)
+        far_specialist = self._make_driver('far_spec', 53.3, -2.0, spec=[self.service.id])
+        near_generalist = self._make_driver('near_gen', 53.001, -2.001, spec=[])
+        ranked = um_views._rank_optimal_drivers(rr)
+        ids = [d.id for _, d in ranked]
+        self.assertEqual(ids[0], far_specialist.id)
+        self.assertIn(near_generalist.id, ids)
+
+    def test_DR06_non_specialists_now_eligible(self):
+        # Previously non-specialists were excluded entirely. With the weighted
+        # score they remain eligible so a request doesn't stall when no
+        # specialist is available.
+        rr = self._make_request()
+        DriverLocation.objects.filter(driver=self.driver_user).update(is_current=False)
+        generalist = self._make_driver('gen_only', 53.5, -2.2, spec=[])
+        ranked = um_views._rank_optimal_drivers(rr)
+        ids = [d.id for _, d in ranked]
+        self.assertIn(generalist.id, ids)
+
 
 # ---------------------------------------------------------------------------
 # 3.4 Dispatch logic
@@ -311,6 +336,59 @@ class TestDispatch(BaseTestCase):
         self.assertEqual(count, 1)
         rr.refresh_from_db()
         self.assertEqual(rr.status, 'ASSIGNED')
+
+    def test_DP04_escalates_to_admin_after_max_batches(self):
+        # FR-0006: once MAX_DISPATCH_BATCHES * DISPATCH_BATCH_SIZE offers have
+        # been sent with no acceptance, further dispatch is capped and every
+        # active admin gets an email.
+        from django.core import mail
+        User.objects.create_user(
+            username='ops_admin', email='ops@quickassist.test',
+            password='p', role='ADMIN', status='APPROVED',
+        )
+        rr = self._make_request()
+        # Pre-seed 9 TIMEOUT offers from disposable driver accounts.
+        for i in range(um_views.MAX_DISPATCH_BATCHES * um_views.DISPATCH_BATCH_SIZE):
+            u = User.objects.create_user(
+                username=f'exhausted_{i}', email=f'ex{i}@t.com', password='p',
+                role='DRIVER', status='APPROVED',
+            )
+            ds = DriverStatus.objects.create(
+                user=u, status='AVAILABLE', license_number='L',
+                vehicle_type='TOW_TRUCK', vehicle_registration='X',
+                qualification=[], specialization=[self.service.id],
+            )
+            Assignment.objects.create(
+                request=rr, driver=ds, offer_sent_at=timezone.now(),
+                driver_response=Assignment.DriverResponse.TIMEOUT,
+            )
+        mail.outbox = []
+        count = um_views._dispatch_to_next_optimal_drivers(rr)
+        self.assertEqual(count, 0)
+        rr.refresh_from_db()
+        self.assertEqual(rr.status, 'PENDING')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('ops@quickassist.test', mail.outbox[0].to)
+        self.assertIn(str(rr.id), mail.outbox[0].subject)
+
+    def test_DP05_escalates_when_no_eligible_drivers(self):
+        # When _rank_optimal_drivers returns empty (every driver offline or
+        # excluded), escalation fires immediately instead of looping forever.
+        from django.core import mail
+        User.objects.create_user(
+            username='ops2', email='ops2@quickassist.test',
+            password='p', role='ADMIN', status='APPROVED',
+        )
+        self.driver_status.status = 'OFFLINE'
+        self.driver_status.save()
+        rr = self._make_request()
+        mail.outbox = []
+        count = um_views._dispatch_to_next_optimal_drivers(rr)
+        self.assertEqual(count, 0)
+        rr.refresh_from_db()
+        self.assertEqual(rr.status, 'PENDING')
+        self.assertEqual(len(mail.outbox), 1)
+        self.assertIn('ops2@quickassist.test', mail.outbox[0].to)
 
 
 # ---------------------------------------------------------------------------
@@ -405,6 +483,40 @@ class TestAuthentication(BaseTestCase):
         r = self.client.get('/dashboard/')
         self.assertEqual(r.status_code, 302)
         self.assertIn('login', r.url)
+
+    def test_AU09_recaptcha_blocks_login_when_token_fails(self):
+        # FR-0002: when reCAPTCHA is configured and verification fails, the
+        # login POST must not reach authenticate().
+        from unittest.mock import patch
+        from usermanagement import views as um_views
+        with self.settings(RECAPTCHA_SECRET_KEY='dummy-secret'):
+            with patch.object(um_views, '_verify_recaptcha', return_value=False) as m:
+                r = self.client.post('/login/', {
+                    'username': 'member1', 'password': 'testpass123',
+                    'g-recaptcha-response': 'invalid',
+                })
+                self.assertTrue(m.called, 'reCAPTCHA verifier was not invoked')
+                self.assertEqual(r.status_code, 200)
+                self.assertFalse(r.wsgi_request.user.is_authenticated)
+
+    def test_AU10_recaptcha_passes_login_when_token_valid(self):
+        from unittest.mock import patch
+        with self.settings(RECAPTCHA_SECRET_KEY='dummy-secret'):
+            with patch('usermanagement.views._verify_recaptcha', return_value=True):
+                r = self.client.post('/login/', {
+                    'username': 'member1', 'password': 'testpass123',
+                    'g-recaptcha-response': 'valid',
+                })
+                self.assertEqual(r.status_code, 302)
+
+    def test_AU11_recaptcha_noop_when_secret_empty(self):
+        # With no RECAPTCHA_SECRET_KEY configured, the gate is a no-op so dev
+        # without keys still works.
+        with self.settings(RECAPTCHA_SECRET_KEY=''):
+            r = self.client.post('/login/', {
+                'username': 'member1', 'password': 'testpass123',
+            })
+            self.assertEqual(r.status_code, 302)
 
 
 # ---------------------------------------------------------------------------
@@ -598,6 +710,35 @@ class TestDriverWorkflow(BaseTestCase):
         self.assertIsNotNone(a.assistance_requested_at)
         rr.refresh_from_db()
         self.assertEqual(rr.priority, 'EMERGENCY')
+
+    def test_DW11_assistance_emails_admins(self):
+        # FR-0007: requesting assistance notifies every active admin.
+        from django.core import mail
+        User.objects.create_user(
+            username='admin_alpha', email='alpha@ops.test', password='p',
+            role='ADMIN', status='APPROVED',
+        )
+        User.objects.create_user(
+            username='admin_beta', email='beta@ops.test', password='p',
+            role='ADMIN', status='APPROVED',
+        )
+        rr = self._make_request(status='IN-PROGRESS')
+        a = Assignment.objects.create(
+            request=rr, driver=self.driver_status, offer_sent_at=timezone.now(),
+            driver_response='ACCEPTED', accepted_at=timezone.now(),
+        )
+        mail.outbox = []
+        r = self._post_json(
+            '/api/request-driver-assistance/',
+            {'assignment_id': a.id, 'notes': 'stuck in ditch, need winch'},
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(len(mail.outbox), 1)
+        message = mail.outbox[0]
+        self.assertIn('alpha@ops.test', message.to)
+        self.assertIn('beta@ops.test', message.to)
+        self.assertIn(str(rr.id), message.subject)
+        self.assertIn('stuck in ditch, need winch', message.body)
 
     def test_DW11_update_location(self):
         r = self._post_json('/api/update-location/', {'latitude': 53.5, 'longitude': -2.3})

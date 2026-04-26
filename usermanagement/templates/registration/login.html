@@ -2,6 +2,12 @@
 
 {% block sidebar %}{% endblock %}
 
+{% block extra_css %}
+{% if recaptcha_site_key %}
+<script src="https://www.google.com/recaptcha/api.js" async defer></script>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <div style="display:flex; justify-content:center; align-items:center; min-height:80vh;">
     <div style="background:#fff; padding:40px; border-radius:12px; box-shadow:0 2px 16px rgba(0,0,0,0.1); width:100%; max-width:420px;">
@@ -45,6 +51,12 @@
                 <div style="color:#c33; font-size:12px; margin-top:4px;">{{ form.password.errors }}</div>
                 {% endif %}
             </div>
+
+            {% if recaptcha_site_key %}
+            <div style="margin-bottom:20px; display:flex; justify-content:center;">
+                <div class="g-recaptcha" data-sitekey="{{ recaptcha_site_key }}"></div>
+            </div>
+            {% endif %}
 
             <button type="submit" style="width:100%; padding:14px; background:#4a90d9; color:#fff; border:none; border-radius:8px; font-size:16px; font-weight:600; cursor:pointer;">
                 Sign In

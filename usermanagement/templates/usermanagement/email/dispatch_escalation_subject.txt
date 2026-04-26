@@ -1,0 +1,1 @@
+{% autoescape off %}[QuickAssist] Manual assignment needed — Request #{{ request.id }}{% endautoescape %}

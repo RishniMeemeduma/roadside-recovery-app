@@ -1,0 +1,17 @@
+{% autoescape off %}A driver has requested assistance on an in-progress job.
+
+Driver: {{ driver.get_username }} ({{ driver.email }})
+Request: #{{ request.id }}
+Service: {{ request.service.name }}
+Location: {{ request.address }}
+Vehicle: {{ request.vehicle_details }}
+Priority: {{ request.get_priority_display }}
+
+Driver notes:
+{{ notes }}
+
+Review and coordinate backup via the admin dashboard:
+{{ site_url }}/dashboard/recovery-requests/
+
+— QuickAssist Northwest
+{% endautoescape %}

@@ -1,0 +1,17 @@
+{% autoescape off %}A recovery request could not be auto-dispatched and needs a manual assignment.
+
+Request: #{{ request.id }}
+Service: {{ request.service.name }}
+Location: {{ request.address }}
+Vehicle: {{ request.vehicle_details }}
+Priority: {{ request.get_priority_display }}
+Status: {{ request.get_status_display }}
+
+Reason: {{ reason }}
+Total offers already sent: {{ offers_sent }}
+
+The request is back in the PENDING queue. Assign a driver via the admin dashboard:
+{{ site_url }}/dashboard/recovery-requests/#request-{{ request.id }}
+
+— QuickAssist Northwest
+{% endautoescape %}
