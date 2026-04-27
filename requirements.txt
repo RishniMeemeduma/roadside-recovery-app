@@ -1,7 +1,7 @@
 asgiref==3.11.1
 Django==6.0.4
 gunicorn==23.0.0
-psycopg2-binary==2.9.11
+psycopg2-binary==2.9.12
 requests==2.33.0
 sqlparse==0.5.5
 tzdata==2026.1
