@@ -13,13 +13,21 @@ from django.db.models.signals import post_save, pre_save
 from django.dispatch import receiver
 from django.template.loader import render_to_string
 
-from .models import RecoveryRequest
+from .models import Notification, RecoveryRequest
 
 logger = logging.getLogger(__name__)
 
 # Status transitions that warrant an email to the member. The PENDING -> created
 # path is skipped (the member just submitted, no need to re-tell them).
 _NOTIFIABLE_STATUSES = {'ASSIGNED', 'IN-PROGRESS', 'COMPLETED', 'CANCELLED'}
+
+# Per-status copy for in-app notifications. Kept short (banner real-estate).
+_IN_APP_MESSAGES = {
+    'ASSIGNED': 'A driver has been assigned to your request #{id}.',
+    'IN-PROGRESS': 'Your driver is on the way for request #{id}.',
+    'COMPLETED': 'Your job is complete — request #{id}.',
+    'CANCELLED': 'Request #{id} has been cancelled.',
+}
 
 
 @receiver(pre_save, sender=RecoveryRequest)
@@ -68,3 +76,11 @@ def _notify_member_of_status_change(sender, instance, created, **kwargs):
             instance.pk,
             member.email,
         )
+
+    # In-app notification — persisted regardless of email outcome.
+    Notification.objects.create(
+        user=member,
+        message=_IN_APP_MESSAGES[instance.status].format(id=instance.id),
+        link='/dashboard/',
+        related_request=instance,
+    )

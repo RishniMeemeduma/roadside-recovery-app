@@ -659,7 +659,7 @@
         })
         .then(() => {
             localStorage.removeItem(autoShareStorageKey);
-            alert('✓ Job marked as completed');
+            // alert('✓ Job marked as completed');
             window.location.reload();
         })
         .catch(error => alert('Failed to complete job: ' + error.message));

@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from usermanagement.models import DriverLocation, DriverStatus, User, UserProfile
 from usermanagement import views as um_views
-from recovery.models import Assignment, RecoveryRequest, JobHistory
+from recovery.models import Assignment, Notification, RecoveryRequest, JobHistory
 from services.models import Service
 
 
@@ -601,6 +601,48 @@ class TestMemberWorkflow(BaseTestCase):
         with self.settings(DVLA_API_KEY=''):
             r = self.client.post('/lookup-vehicle/', {'registration': 'AB12CDE'})
             self.assertEqual(r.status_code, 503)
+
+    def test_MR11_status_change_creates_in_app_notification(self):
+        # In-app notification companion to the FR-0010 email.
+        rr = self._make_request(status='ASSIGNED')
+        rr.status = 'COMPLETED'
+        rr.save()
+        notes = Notification.objects.filter(user=self.member, related_request=rr)
+        self.assertEqual(notes.count(), 1)
+        self.assertIn(str(rr.id), notes.first().message)
+        self.assertFalse(notes.first().is_read)
+
+    def test_MR12_dashboard_shows_unread_notifications(self):
+        Notification.objects.create(user=self.member, message='hi there', link='/dashboard/')
+        r = self.client.get('/dashboard/')
+        self.assertEqual(r.status_code, 200)
+        self.assertContains(r, 'hi there')
+
+    def test_MR13_mark_single_notification_read(self):
+        n = Notification.objects.create(user=self.member, message='x')
+        r = self.client.post(f'/api/notifications/{n.id}/read/')
+        self.assertEqual(r.status_code, 200)
+        n.refresh_from_db()
+        self.assertTrue(n.is_read)
+
+    def test_MR14_cannot_mark_other_users_notification(self):
+        other = User.objects.create_user(
+            username='other', email='other@t.com', password='p', role='MEMBER',
+        )
+        n = Notification.objects.create(user=other, message='private')
+        r = self.client.post(f'/api/notifications/{n.id}/read/')
+        self.assertEqual(r.status_code, 404)
+        n.refresh_from_db()
+        self.assertFalse(n.is_read)
+
+    def test_MR15_mark_all_notifications_read(self):
+        for i in range(3):
+            Notification.objects.create(user=self.member, message=f'n{i}')
+        r = self.client.post('/api/notifications/mark-all-read/')
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(
+            Notification.objects.filter(user=self.member, is_read=True).count(), 3,
+        )
 
 
 # ---------------------------------------------------------------------------

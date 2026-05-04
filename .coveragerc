@@ -1,0 +1,21 @@
+[run]
+source = usermanagement,recovery,services,core,roadsideassist
+omit =
+    */migrations/*
+    */tests.py
+    */tests/*
+    manage.py
+    */wsgi.py
+    */asgi.py
+    */__pycache__/*
+    venv/*
+
+[report]
+precision = 1
+show_missing = false
+skip_covered = false
+exclude_lines =
+    pragma: no cover
+    raise NotImplementedError
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:

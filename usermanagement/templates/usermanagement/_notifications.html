@@ -1,0 +1,66 @@
+{% if unread_notifications %}
+<section class="notifications-panel" data-notifications-panel>
+    <header style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h2 style="margin:0; font-size:0.95rem; color:#1e2638;">
+            Notifications
+            <span style="background:#2f6feb; color:#fff; border-radius:999px; padding:2px 8px; font-size:0.75rem; margin-left:6px;">
+                {{ unread_notifications|length }}
+            </span>
+        </h2>
+        <button type="button" data-mark-all-read
+                style="background:transparent; border:0; color:#2f6feb; font-weight:600; font-size:0.8rem; cursor:pointer;">
+            Mark all as read
+        </button>
+    </header>
+    <ul style="list-style:none; padding:0; margin:0;">
+        {% for note in unread_notifications %}
+        <li data-notification-id="{{ note.id }}"
+            style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:10px 12px; border-radius:10px; background:#eaf1ff; margin-bottom:6px;">
+            <div>
+                <div style="font-weight:600; color:#1e2638;">{{ note.message }}</div>
+                <div style="font-size:0.75rem; color:#6e7891;">{{ note.created_at|timesince }} ago</div>
+            </div>
+            <button type="button" data-mark-read="{{ note.id }}"
+                    style="background:#2f6feb; color:#fff; border:0; border-radius:8px; padding:6px 12px; font-size:0.75rem; font-weight:600; cursor:pointer;">
+                Dismiss
+            </button>
+        </li>
+        {% endfor %}
+    </ul>
+</section>
+
+<script>
+(function () {
+    const panel = document.querySelector('[data-notifications-panel]');
+    if (!panel) return;
+    const csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value
+        || document.cookie.split('; ').find(r => r.startsWith('csrftoken='))?.split('=')[1]
+        || '';
+
+    async function markRead(url, listItem) {
+        try {
+            const r = await fetch(url, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+            });
+            if (!r.ok) return;
+            if (listItem) listItem.remove();
+            if (panel.querySelectorAll('li').length === 0) panel.remove();
+        } catch (e) { /* fail silently — banner stays, user can retry */ }
+    }
+
+    panel.querySelectorAll('[data-mark-read]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-mark-read');
+            markRead(`/api/notifications/${id}/read/`, btn.closest('li'));
+        });
+    });
+
+    panel.querySelector('[data-mark-all-read]')?.addEventListener('click', async () => {
+        await markRead('/api/notifications/mark-all-read/', null);
+        panel.remove();
+    });
+})();
+</script>
+{% endif %}

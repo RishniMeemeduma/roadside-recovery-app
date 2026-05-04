@@ -339,6 +339,11 @@ main {
         </div>
         {% endif %}
 
+        <form style="display:none">{% csrf_token %}</form>
+        <section class="member-section" style="border-bottom:1px solid var(--line);">
+            {% include 'usermanagement/_notifications.html' %}
+        </section>
+
         <section class="member-section">
             <h1 class="title-lg">Need Help?</h1>
             <p class="subtitle">Tell us what's wrong and we'll send a recovery driver right away.</p>

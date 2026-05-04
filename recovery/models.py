@@ -86,6 +86,40 @@ class Assignment(models.Model):
         return f"Assignment #{self.id} - Request #{self.request_id}"
 
 
+class Notification(models.Model):
+    """In-app notification surfaced on the member dashboard.
+
+    Created alongside the email in recovery.signals on the same status
+    transitions (ASSIGNED / IN-PROGRESS / COMPLETED / CANCELLED) so that
+    members don't have to leave the app to know what happened.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notifications',
+    )
+    message = models.CharField(max_length=255)
+    link = models.CharField(max_length=255, blank=True)
+    related_request = models.ForeignKey(
+        'RecoveryRequest',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='notifications',
+    )
+    is_read = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_read', '-created_at']),
+        ]
+
+    def __str__(self):
+        return f"Notification #{self.id} → {self.user_id}"
+
+
 class JobHistory(models.Model):
     request = models.OneToOneField(RecoveryRequest, on_delete=models.CASCADE, related_name='job_history')
     driver = models.ForeignKey(DriverStatus, on_delete=models.CASCADE, related_name='job_histories')

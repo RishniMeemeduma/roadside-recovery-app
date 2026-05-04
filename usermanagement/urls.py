@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path, reverse_lazy
 
-from usermanagement.views import admin_handle_request, admin_requests_status, admin_recovery_requests_api, admin_users, assign_recovery_request, cancel_driver_assignment, complete_driver_assignment, decline_recovery_request, driver_assignment_snapshot, driver_dispatch_card, driver_requests, login_view, members, member_requests_status, register_view, request_driver_assistance, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services, submit_request, lookup_vehicle, cancel_request, get_driver_locations, update_driver_location, update_driver_status, accept_driver_assignment, member_request_driver_location
+from usermanagement.views import admin_handle_request, admin_requests_status, admin_recovery_requests_api, admin_users, assign_recovery_request, cancel_driver_assignment, complete_driver_assignment, decline_recovery_request, driver_assignment_snapshot, driver_dispatch_card, driver_requests, login_view, mark_all_notifications_read, mark_notification_read, members, member_requests_status, register_view, request_driver_assistance, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services, submit_request, lookup_vehicle, cancel_request, get_driver_locations, update_driver_location, update_driver_status, accept_driver_assignment, member_request_driver_location
 
 urlpatterns = [
     path('register/', register_view, name='register'),
@@ -37,6 +37,8 @@ urlpatterns = [
     path('api/complete-driver-assignment/', complete_driver_assignment, name='complete_driver_assignment'),
     path('api/cancel-driver-assignment/', cancel_driver_assignment, name='cancel_driver_assignment'),
     path('api/request-driver-assistance/', request_driver_assistance, name='request_driver_assistance'),
+    path('api/notifications/<int:notification_id>/read/', mark_notification_read, name='mark_notification_read'),
+    path('api/notifications/mark-all-read/', mark_all_notifications_read, name='mark_all_notifications_read'),
     path('dashboard/recovery-requests/<int:request_id>/decline/', decline_recovery_request, name='decline_recovery_request'),
 
     # FR-0003 — Password reset flow (Django's built-in views + project templates).

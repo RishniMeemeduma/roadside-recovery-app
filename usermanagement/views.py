@@ -23,7 +23,7 @@ from django_ratelimit.decorators import ratelimit
 logger = logging.getLogger(__name__)
 
 from .forms import RegistrationForm
-from recovery.models import Assignment, RecoveryRequest, JobHistory
+from recovery.models import Assignment, Notification, RecoveryRequest, JobHistory
 from services.models import Service
 from usermanagement.models import DriverLocation, DriverStatus, User, UserProfile
 
@@ -561,10 +561,14 @@ def dashboard(request):
                 driver_response=Assignment.DriverResponse.ACCEPTED,
             ).select_related('driver__user', 'driver__user__profile').order_by('-accepted_at', '-created_at').first()
 
+        unread_notifications = list(
+            Notification.objects.filter(user=request.user, is_read=False)[:10]
+        )
         return render(request, 'usermanagement/member_dashboard.html',
                       {
                           'services': services,
                           'today_requests': today_requests,
+                          'unread_notifications': unread_notifications,
                       })
 
 
@@ -1533,6 +1537,29 @@ def _notify_admins_of_assistance_request(assignment, notes):
             'Failed to email admins about assistance request for assignment %s',
             assignment.pk,
         )
+
+
+@login_required
+@require_POST
+def mark_notification_read(request, notification_id):
+    """Mark a single notification as read. Caller must own it."""
+    notification = get_object_or_404(
+        Notification, id=notification_id, user=request.user,
+    )
+    if not notification.is_read:
+        notification.is_read = True
+        notification.save(update_fields=['is_read'])
+    return JsonResponse({'success': True, 'id': notification.id})
+
+
+@login_required
+@require_POST
+def mark_all_notifications_read(request):
+    """Mark every unread notification belonging to the caller as read."""
+    updated = Notification.objects.filter(
+        user=request.user, is_read=False,
+    ).update(is_read=True)
+    return JsonResponse({'success': True, 'updated': updated})
 
 
 @login_required
