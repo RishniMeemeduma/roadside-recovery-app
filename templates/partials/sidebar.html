@@ -5,8 +5,16 @@
     ☰
 </button>
 
+<!-- Toggle button (visible on desktop) -->
+<button id="sidebarToggle" type="button"
+        class="btn btn-primary d-none d-md-inline-flex align-items-center justify-content-center position-fixed"
+        style="top:80px; left:10px; z-index:99; width:40px; height:40px; padding:0;"
+        aria-label="Toggle sidebar" aria-controls="sidebar" aria-expanded="true">
+    <span id="sidebarToggleIcon">☰</span>
+</button>
+
 <!-- Sidebar -->
-<nav id="sidebar" class="offcanvas-md offcanvas-start d-flex flex-column flex-shrink-0 p-3 text-white bg-primary"
+<nav id="sidebar" class="offcanvas-md offcanvas-start d-flex flex-column flex-shrink-0 p-3 text-white bg-primary sidebar-desktop"
      style="width: 240px;">
     <div class="offcanvas-header d-md-none">
         <h5 class="offcanvas-title text-white">Menu</h5>
@@ -51,4 +59,93 @@
         {% endwith %}
     </div>
 </nav>
+
+<style>
+    @media (min-width: 768px) {
+        #sidebar.sidebar-desktop {
+            transition: margin-left 0.35s cubic-bezier(0.4, 0, 0.2, 1),
+                        opacity 0.25s ease,
+                        box-shadow 0.35s ease;
+            box-shadow: 2px 0 12px rgba(0, 0, 0, 0.08);
+            will-change: margin-left, opacity;
+        }
+        #sidebar.sidebar-desktop .nav-link,
+        #sidebar.sidebar-desktop .offcanvas-body > * > * {
+            transition: opacity 0.25s ease, transform 0.3s ease;
+        }
+        body.sidebar-hidden #sidebar.sidebar-desktop {
+            margin-left: -240px;
+            opacity: 0;
+            box-shadow: none;
+            pointer-events: none;
+        }
+        body.sidebar-hidden #sidebar.sidebar-desktop .nav-link {
+            opacity: 0;
+            transform: translateX(-12px);
+        }
+    }
+
+    #sidebarToggle {
+        transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+                    background-color 0.25s ease,
+                    box-shadow 0.25s ease;
+        box-shadow: 0 4px 10px rgba(13, 110, 253, 0.35);
+    }
+    #sidebarToggle:hover {
+        transform: scale(1.08);
+        box-shadow: 0 6px 14px rgba(13, 110, 253, 0.45);
+    }
+    #sidebarToggle:active {
+        transform: scale(0.94);
+    }
+    #sidebarToggleIcon {
+        display: inline-block;
+        transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+        font-size: 18px;
+        line-height: 1;
+    }
+    body.sidebar-hidden #sidebarToggleIcon {
+        transform: rotate(180deg);
+    }
+
+    main {
+        transition: padding 0.35s ease;
+    }
+</style>
+
+<script>
+(function () {
+    var toggleBtn = document.getElementById('sidebarToggle');
+    var icon = document.getElementById('sidebarToggleIcon');
+    if (!toggleBtn) return;
+
+    var STORAGE_KEY = 'qa_sidebar_hidden';
+    var hidden = localStorage.getItem(STORAGE_KEY) === '1';
+
+    function apply(hidden, animate) {
+        var sidebar = document.getElementById('sidebar');
+        if (!animate && sidebar) {
+            var prev = sidebar.style.transition;
+            sidebar.style.transition = 'none';
+            document.body.classList.toggle('sidebar-hidden', hidden);
+            // force reflow then restore transitions
+            void sidebar.offsetWidth;
+            sidebar.style.transition = prev;
+        } else {
+            document.body.classList.toggle('sidebar-hidden', hidden);
+        }
+        toggleBtn.setAttribute('aria-expanded', hidden ? 'false' : 'true');
+        if (icon) icon.textContent = hidden ? '☰' : '✕';
+    }
+
+    // initial state without animation to avoid a flash on page load
+    apply(hidden, false);
+
+    toggleBtn.addEventListener('click', function () {
+        hidden = !hidden;
+        localStorage.setItem(STORAGE_KEY, hidden ? '1' : '0');
+        apply(hidden, true);
+    });
+})();
+</script>
 {% endif %}
