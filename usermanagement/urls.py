@@ -1,7 +1,7 @@
 from django.contrib.auth import views as auth_views
 from django.urls import path, reverse_lazy
 
-from usermanagement.views import admin_handle_request, admin_requests_status, admin_recovery_requests_api, admin_users, assign_recovery_request, cancel_driver_assignment, complete_driver_assignment, decline_recovery_request, driver_assignment_snapshot, driver_dispatch_card, driver_requests, login_view, mark_all_notifications_read, mark_notification_read, members, member_requests_status, register_view, request_driver_assistance, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services, submit_request, lookup_vehicle, cancel_request, get_driver_locations, update_driver_location, update_driver_status, accept_driver_assignment, member_request_driver_location
+from usermanagement.views import admin_handle_request, admin_requests_status, admin_recovery_requests_api, admin_user_requests, admin_users, assign_recovery_request, cancel_driver_assignment, complete_driver_assignment, decline_recovery_request, driver_assignment_snapshot, driver_dispatch_card, driver_requests, login_view, mark_all_notifications_read, mark_notification_read, members, member_requests_status, register_view, request_driver_assistance, signup, dashboard, logout_view, admin_create_user, admin_create_driver, admin_delete_user, admin_delete_service, admin_users, admin_recovery_requests, admin_analytics, admin_services, submit_request, lookup_vehicle, cancel_request, get_driver_locations, update_driver_location, update_driver_status, accept_driver_assignment, member_request_driver_location
 
 urlpatterns = [
     path('register/', register_view, name='register'),
@@ -20,6 +20,7 @@ urlpatterns = [
     path('dashboard/delete-service/<int:service_id>/', admin_delete_service, name='admin_delete_service'),
     path('dashboard/admin-users/', admin_users, name='admin_users'),
     path('dashboard/driver-requests/', driver_requests, name='driver_requests'),
+    path('dashboard/user-requests/', admin_user_requests, name='admin_user_requests'),
     path('dashboard/handle-request/<uuid:request_id>/', admin_handle_request, name='admin_handle_request'),
     path('submit-request/', submit_request, name='submit_request'),
     path('cancel-request/<int:request_id>/', cancel_request, name='cancel_request'),

@@ -38,22 +38,6 @@ def _haversine_km(lat1, lon1, lat2, lon2):
     a = sin(d_lat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(d_lon / 2) ** 2
     return 2 * earth_radius_km * atan2(sqrt(a), sqrt(1 - a))
 
-
-def _supports_service(driver_status, service):
-    """Check if driver's specialization includes the requested service id or name."""
-    specs = driver_status.specialization or []
-    if not isinstance(specs, list):
-        return False
-
-    service_id_str = str(service.id)
-    service_name = (service.name or '').strip().lower()
-    for item in specs:
-        value = str(item).strip().lower()
-        if value == service_id_str or value == service_name:
-            return True
-    return False
-
-
 DISPATCH_BATCH_SIZE = 3
 DRIVER_RESPONSE_TIMEOUT_SECONDS = 60
 # FR-0006 escalation: after MAX_DISPATCH_BATCHES full batches with no
@@ -126,6 +110,21 @@ def _rank_optimal_drivers(recovery_request, excluded_driver_ids=None):
 
     ranked.sort(key=lambda item: item[0], reverse=True)
     return ranked
+
+def _supports_service(driver_status, service):
+    """Check if driver's specialization includes the requested service id or name."""
+    specs = driver_status.specialization or []
+    if not isinstance(specs, list):
+        return False
+
+    service_id_str = str(service.id)
+    service_name = (service.name or '').strip().lower()
+    for item in specs:
+        value = str(item).strip().lower()
+        if value == service_id_str or value == service_name:
+            return True
+    return False
+
 
 
 def _escalate_to_admin_manual_assignment(recovery_request, reason):

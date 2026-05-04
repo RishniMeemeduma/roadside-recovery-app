@@ -858,16 +858,17 @@ class TestAdminWorkflow(BaseTestCase):
 
     def test_AD07_create_user(self):
         self.client.post('/dashboard/create-user/', {
-            'username': 'adminmade', 'email': 'am@t.com', 'password': 'pw',
-            'role': 'MEMBER', 'first_name': 'A', 'last_name': 'M', 'phone': '999',
+            'username': 'adminmade', 'email': 'am@t.com', 'password': 'password123',
+            'role': 'MEMBER', 'first_name': 'A', 'last_name': 'M', 'phone': '07000000999',
         })
         self.assertTrue(User.objects.filter(username='adminmade').exists())
 
     def test_AD08_create_driver(self):
         self.client.post('/dashboard/create-driver/', {
-            'username': 'admindrv', 'email': 'ad@t.com', 'password': 'pw',
+            'username': 'admindrv', 'email': 'ad@t.com', 'password': 'password123',
+            'first_name': 'A', 'last_name': 'D', 'phone': '07000000001',
             'license_number': 'L', 'vehicle_type': 'TOW_TRUCK',
-            'vehicle_registration': 'R', 'phone': '1',
+            'vehicle_registration': 'R',
         })
         u = User.objects.filter(username='admindrv').first()
         self.assertIsNotNone(u)

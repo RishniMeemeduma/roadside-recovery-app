@@ -61,8 +61,8 @@ class DriverStatus(models.Model):
     license_number = models.CharField(max_length=50)
     vehicle_type = models.CharField(max_length=15, choices=VehicleType.choices)
     vehicle_registration = models.CharField(max_length=20)
-    qualification = models.JSONField()
-    specialization = models.JSONField()
+    qualification = models.JSONField(blank=True, default=list)
+    specialization = models.JSONField(blank=True, default=list)
     acceptance_rate = models.IntegerField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
